@@ -1,7 +1,7 @@
 export default {
   name: '오고피씽',
   slug: 'ohgo-coupon',
-  version: '1.1.0',
+  version: '1.1.3',
   orientation: 'portrait',
   icon: './assets/images/icon.png',
   scheme: 'ohgocoupon',
@@ -10,7 +10,7 @@ export default {
   ios: {
     supportsTablet: true,
     bundleIdentifier: 'ohgo.mobile',
-    buildNumber: '10011',
+    buildNumber: '10013',
   },
   android: {
     adaptiveIcon: {
@@ -18,7 +18,7 @@ export default {
       backgroundColor: '#000000',
     },
     edgeToEdgeEnabled: true,
-    versionCode: 10011,
+    versionCode: 10013,
     package: 'ohgo.mobile',
     googleServicesFile: './google-services.json', // ✅ Firebase 연동을 위한 추가
   },
@@ -52,3 +52,5 @@ export default {
   },
   owner: 'jyn0204',
 };
+
+console.log('🛠️ EAS is using buildNumber:', '10013');
