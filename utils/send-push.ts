@@ -23,11 +23,18 @@ export const sendPushToUser = async ({
     }
 
     const expoPushToken = snap.data().expoPushToken;
+
     if (!expoPushToken) {
       console.warn('❗푸시 토큰 없음:', uuid);
-      Alert.alert('푸시 실패', '해당 회원에게 저장된 푸시 토큰이 없습니다.');
+
+      Alert.alert(
+        '푸시 실패',
+        '해당 회원에게 저장된 푸시 토큰이 없습니다.\n\n알림 권한이 꺼져 있을 수 있습니다.\n설정에서 알림을 활성화해 주세요.'
+      );
+
       return;
     }
+
 
     const payload = {
       to: expoPushToken,

@@ -44,6 +44,13 @@ export default function LoginScreen() {
       if ('name' in user && 'dob' in user && 'uuid' in user) {
         await saveUser({ name: user.name, dob: user.dob, uuid: user.uuid, isAdmin: user.isAdmin || false });
 
+        // ✅ SecureStore에 userInfo 저장
+        await SecureStore.setItemAsync('userInfo', JSON.stringify({
+          name: user.name,
+          dob: user.dob,
+          uuid: user.uuid
+        }));
+
         // ✅ Push Token 등록
         try {
           await registerPushToken(user.uuid);

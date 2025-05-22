@@ -1,9 +1,5 @@
-import { db } from '@/firebase';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import * as SecureStore from 'expo-secure-store';
-import * as Updates from 'expo-updates';
-import { deleteField, doc, updateDoc } from 'firebase/firestore';
 import React, { useCallback, useState } from 'react';
 import {
   RefreshControl,
@@ -13,7 +9,6 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import { clearUser } from '../utils/secure-store';
 import { getCouponCount, getStamps } from '../utils/stamp-service';
 
 export default function StampScreen() {
@@ -70,36 +65,6 @@ export default function StampScreen() {
     );
   };
 
-  const handleLogout = async () => {
-    console.log('✅ 로그아웃 시도');
-  
-    try {
-      const uuidString = typeof uuid === 'string' ? uuid : null;
-      const pushToken = await SecureStore.getItemAsync('expoPushToken');
-  
-      console.log('uuid:', uuidString);
-      console.log('pushToken:', pushToken);
-  
-      if (uuidString && pushToken) {
-        console.log('푸시 토큰 삭제 시도:', pushToken);
-  
-        // ✅ Firestore 문서 필드 삭제
-        await updateDoc(doc(db, 'users', uuidString), {
-          expoPushToken: deleteField(),
-        });
-  
-        // ✅ SecureStore 삭제
-        await SecureStore.deleteItemAsync('expoPushToken');
-      }
-  
-      await clearUser();
-      await Updates.reloadAsync();
-    } catch (e) {
-      console.error('🚨 로그아웃 처리 중 에러:', e);
-    }
-  };
-  
-
   return (
     <ScrollView contentContainerStyle={styles.container} refreshControl={
       <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
@@ -144,14 +109,7 @@ export default function StampScreen() {
         >
             <Text style={styles.buttonText}>보유 쿠폰 보기</Text>
         </TouchableOpacity>
-
-        <TouchableOpacity
-            style={styles.dangerButton}
-            onPress={handleLogout}
-        >
-            <Text style={styles.buttonText}>로그아웃</Text>
-        </TouchableOpacity>
-        </View>
+      </View>
 
     </ScrollView>
   );
@@ -247,13 +205,6 @@ const styles = StyleSheet.create({
       
       primaryButton: {
         backgroundColor: '#2196F3',
-        paddingVertical: 14,
-        borderRadius: 8,
-        alignItems: 'center',
-      },
-      
-      dangerButton: {
-        backgroundColor: '#f44336',
         paddingVertical: 14,
         borderRadius: 8,
         alignItems: 'center',

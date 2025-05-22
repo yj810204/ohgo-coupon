@@ -40,7 +40,7 @@ export default function Index() {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
         <ActivityIndicator />
-        <Text>사용자 확인 중...</Text>
+        <Text>자동 로그인 중...</Text>
       </View>
     );
   }

@@ -3,11 +3,33 @@ import { DarkTheme, DefaultTheme, ThemeProvider, useNavigation } from '@react-na
 import { useFonts } from 'expo-font';
 import * as Notifications from 'expo-notifications';
 import { router, Stack } from 'expo-router';
+import * as SecureStore from 'expo-secure-store';
 import { canGoBack } from 'expo-router/build/global-state/routing';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import 'react-native-reanimated';
+import { Ionicons } from '@expo/vector-icons';
+
+Notifications.addNotificationReceivedListener(async (notification) => {
+  const title = notification.request.content.title || '';
+  const body = notification.request.content.body || '';
+  const log = {
+    title,
+    body,
+    time: new Date().toISOString(),
+  };
+
+  const raw = await SecureStore.getItemAsync('notificationHistory');
+  const history = raw ? JSON.parse(raw) : [];
+  history.unshift(log);
+
+  // 최근 50개만 유지
+  if (history.length > 50) history.pop();
+
+  await SecureStore.setItemAsync('notificationHistory', JSON.stringify(history));
+});
+
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -82,13 +104,13 @@ export default function TabLayout() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack
-        screenOptions={({ route }) => ({
-          header: ({ route }) => (
-            <CustomHeader title={getTitle(route?.name)} />
-          ),
-        })}
-      >
+        <Stack
+          screenOptions={({ route }) => ({
+            header: () => (
+              <CustomHeader title={getTitle(route?.name)} routeName={route.name} />
+            ),
+          })}
+        >
         <Stack.Screen name="login" />
         <Stack.Screen name="stamp" />
         <Stack.Screen name="coupons" />
@@ -115,8 +137,10 @@ export default function TabLayout() {
         return 'QR Scan';
       case 'admin':
         return 'Admin';
-        case 'member-detail':
-          return 'Admin';
+      case 'member-detail':
+        return 'Admin';
+      case 'settings':
+        return 'Settings';
       default:
         return '';
     }
@@ -124,30 +148,36 @@ export default function TabLayout() {
   
   type CustomHeaderProps = {
     title: string;
+    routeName: string;
   };
   
-  function CustomHeader({ title }: { title: string }) {
+  function CustomHeader({ title, routeName }: CustomHeaderProps) {
     const navigation = useNavigation();
   
     return (
       <View style={styles.header}>
         {canGoBack() ? (
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-            <Text style={styles.backText}>←</Text>
+            <Ionicons name="chevron-back" size={26} color="#fff" />
           </TouchableOpacity>
         ) : (
-          <View style={styles.backBtn} /> // 크기만 유지 (좌우 정렬 안 깨지게)
+          <View style={styles.backBtn} />
         )}
-        
+  
         <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">
-          {String(title)}
+          {title}
         </Text>
   
-        <View style={{ width: 32 }} />
+        {!['login', 'settings'].includes(routeName) ? (
+          <TouchableOpacity onPress={() => router.push('/settings')} style={styles.rightBtn}>
+            <Ionicons name="settings-outline" size={26} color="#fff" />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.rightBtn} />
+        )}
       </View>
     );
-    
-  }
+  }  
 }
 
 const styles = StyleSheet.create({
@@ -163,7 +193,7 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 50,
   },
   backBtn: {
-    width: 32,
+    width: 40,
     justifyContent: 'center',
     alignItems: 'flex-start',
   },
@@ -177,5 +207,10 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: '#fff',
     fontFamily: 'GiantInline',
+  },
+  rightBtn: {
+    width: 40,
+    justifyContent: 'center',
+    alignItems: 'flex-end',
   },
 });
