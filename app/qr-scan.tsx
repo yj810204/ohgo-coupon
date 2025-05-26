@@ -156,8 +156,20 @@ export default function QRScanScreen() {
     }, 2000);
   };
 
-  if (!permission) return <Text>카메라 권한 요청 중...</Text>;
-  if (!permission.granted) return <Text>카메라 권한이 거부되었습니다.</Text>;
+  if (!permission) {
+    return (
+      <View style={styles.centeredContainer}>
+        <Text style={styles.messageText}>카메라 권한 요청 중...</Text>
+      </View>
+    );
+  }
+  if (!permission.granted) {
+    return (
+      <View style={styles.centeredContainer}>
+        <Text style={styles.messageText}>카메라 권한이 거부되었습니다.</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -241,5 +253,16 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
     color: '#fff',
     overflow: 'hidden',
+  },
+  centeredContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f7f9fc',
+  },
+  messageText: {
+    fontSize: 16,
+    fontFamily: 'GiantRegular',
+    color: '#333',
   },
 });

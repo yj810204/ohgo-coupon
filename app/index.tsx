@@ -1,7 +1,7 @@
 // app/index.tsx
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
+import { ActivityIndicator, Text, View, StyleSheet } from 'react-native';
 import { getUserByUUID } from '../utils/firebase-auth';
 import { getUser } from '../utils/secure-store';
 
@@ -43,12 +43,26 @@ export default function Index() {
 
   if (checking) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator />
-        <Text>자동 로그인 중...</Text>
+      <View style={styles.centeredContainer}>
+        <ActivityIndicator size="small" color="#2196F3" style={{ marginBottom: 10 }} />
+        <Text style={styles.messageText}>자동 로그인 중...</Text>
       </View>
     );
   }
 
   return null;
 }
+
+const styles = StyleSheet.create({
+  centeredContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f7f9fc', // 필요 시 배경색 조절
+  },
+  messageText: {
+    fontSize: 16,
+    fontFamily: 'GiantRegular',
+    color: '#333',
+  },
+});

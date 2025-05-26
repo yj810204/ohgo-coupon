@@ -1,7 +1,7 @@
 export default {
   name: '오고피씽',
   slug: 'ohgo-coupon',
-  version: '1.1.5',
+  version: '1.1.7',
   orientation: 'portrait',
   icon: './assets/images/icon.png',
   scheme: 'ohgocoupon',
@@ -10,13 +10,17 @@ export default {
   ios: {
     supportsTablet: true,
     bundleIdentifier: 'ohgo.mobile',
-    buildNumber: '10015',
+    buildNumber: '10017',
     googleServicesFile: './ios/GoogleService-Info.plist', // ✅ Firebase 연동을 위한 추가
     infoPlist: {
       NSCameraUsageDescription:
-        '오고피씽은 쿠폰 스캔을 위해 카메라 접근 권한이 필요합니다.',
+        '쿠폰 스캔을 위해 카메라 접근 권한이 필요합니다.',
       NSUserTrackingUsageDescription:
-        '오고피씽은 사용자 맞춤형 광고를 제공하기 위해 추적 권한이 필요합니다.',
+        '사용자 맞춤형 광고를 제공하기 위해 추적 권한이 필요합니다.',
+      NSLocationWhenInUseUsageDescription:
+        '스탬프 적립을 위한 QR 스캔을 위해 사용자의 위치 정보 접근 권한이 필요합니다.',
+      NSLocationAlwaysAndWhenInUseUsageDescription:
+        '스탬프 적립을 위한 QR 스캔 기능을 원활히 사용하려면 위치 접근 권한이 필요합니다.',
     },
   },
   android: {
@@ -25,9 +29,14 @@ export default {
       backgroundColor: '#000000',
     },
     edgeToEdgeEnabled: true,
-    versionCode: 10015,
+    versionCode: 10017,
     package: 'ohgo.mobile',
     googleServicesFile: './google-services.json', // ✅ Firebase 연동을 위한 추가
+    permissions: [
+      'ACCESS_FINE_LOCATION',
+      'ACCESS_COARSE_LOCATION',
+      'CAMERA' // QR 스캔이 포함될 경우 추가 권장
+    ]
   },
   web: {
     bundler: 'metro',
