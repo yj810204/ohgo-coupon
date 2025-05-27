@@ -53,6 +53,18 @@ export default function TabLayout() {
 
   // ✅ 푸시 클릭 이벤트 리스너 등록
   useEffect(() => {
+    const requestNotificationPermission = async () => {
+      const { status } = await Notifications.getPermissionsAsync();
+      if (status !== 'granted') {
+        const { status: newStatus } = await Notifications.requestPermissionsAsync();
+        console.log('📛 푸시 권한 요청 결과:', newStatus);
+      } else {
+        console.log('✅ 푸시 권한 이미 허용됨');
+      }
+    };
+  
+    requestNotificationPermission();
+
     const subscription = Notifications.addNotificationResponseReceivedListener(response => {
       const data = response.notification.request.content.data;
       console.log('📩 푸시 클릭됨:', data);
