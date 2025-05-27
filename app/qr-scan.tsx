@@ -51,10 +51,22 @@ export default function QRScanScreen() {
   };
 
   useEffect(() => {
-    if (!permission || !permission.granted) {
-      requestPermission();
-    }
-    scanInProgress = false;
+    const prepare = async () => {
+      // 카메라 권한 요청
+      if (!permission || !permission.granted) {
+        await requestPermission();
+      }
+  
+      // ✅ 위치 권한 미리 요청 (iOS에서 필수)
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('위치 권한 필요', 'QR 스캔 기능을 사용하려면 위치 접근 권한이 필요합니다.');
+      }
+  
+      scanInProgress = false;
+    };
+  
+    prepare();
   }, []);
 
   // ✅ 타임아웃 유틸 함수
@@ -171,31 +183,30 @@ export default function QRScanScreen() {
     );
   }
 
-  return (
-    <View style={styles.container}>
-  <View style={StyleSheet.absoluteFill}>
-    {cameraActive && (
-      <>
-        <CameraView
-          style={StyleSheet.absoluteFill}
-          facing="back"
-          onBarcodeScanned={handleScan}
-          barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-        />
-        {scanInProgress && (
-          <View style={styles.dimmedOverlay} />
-        )}
-      </>
-    )}
-  </View>
+return (
+  <View style={styles.container}>
+    <View style={StyleSheet.absoluteFill}>
+      {cameraActive && (
+        <>
+          <CameraView
+            style={StyleSheet.absoluteFill}
+            facing="back"
+            onBarcodeScanned={handleScan}
+            barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+          />
+          {scanInProgress && (
+            <View style={styles.dimmedOverlay} />
+          )}
+        </>
+      )}
+    </View>
 
-  <View style={styles.overlay}>
-    <Text style={[styles.message, { color: messageColor }]}>
-      {message || 'QR을 스캔해주세요'}
-    </Text>
+    <View style={styles.overlay}>
+      <Text style={[styles.message, { color: messageColor }]}>
+        {message || 'QR을 스캔해주세요'}
+      </Text>
+    </View>
   </View>
-</View>
-
   );
 }
 
