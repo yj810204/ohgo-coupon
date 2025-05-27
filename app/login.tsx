@@ -126,19 +126,6 @@ export default function LoginScreen() {
         return;
       }
   
-      const { status: existingStatus } = await Notifications.getPermissionsAsync();
-      let finalStatus = existingStatus;
-  
-      if (existingStatus !== 'granted') {
-        const { status } = await Notifications.requestPermissionsAsync();
-        finalStatus = status;
-      }
-  
-      if (finalStatus !== 'granted') {
-        Alert.alert('권한 거부됨', '푸시 알림 권한이 필요합니다.');
-        return;
-      }
-  
       const tokenData = await Notifications.getExpoPushTokenAsync();
       const token = tokenData.data;
   

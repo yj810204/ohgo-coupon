@@ -14,7 +14,7 @@ export default {
     googleServicesFile: './ios/GoogleService-Info.plist', // ✅ Firebase 연동을 위한 추가
     infoPlist: {
       NSCameraUsageDescription:
-        '쿠폰 스캔을 위해 카메라 접근 권한이 필요합니다.',
+        'QR 스캔을 위해 카메라 접근 권한이 필요합니다.',
       NSUserTrackingUsageDescription:
         '사용자 맞춤형 광고를 제공하기 위해 추적 권한이 필요합니다.',
       NSLocationWhenInUseUsageDescription:
