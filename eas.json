@@ -24,7 +24,7 @@
       }
     },
     "development": {
-      "developmentClient": true,
+      "developmentClient": false,
       "distribution": "internal",
       "ios": {
         "simulator": false

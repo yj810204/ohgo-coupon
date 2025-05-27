@@ -32,6 +32,7 @@ let scanInProgress = false;
 export default function QRScanScreen() {
   const { name, dob, uuid } = useLocalSearchParams();
   const router = useRouter();
+  const [locationGranted, setLocationGranted] = useState(false);
   const [permission, requestPermission] = useCameraPermissions();
 
   const [cameraActive, setCameraActive] = useState(true);
@@ -50,19 +51,43 @@ export default function QRScanScreen() {
     };
   };
 
+  // useEffect(() => {
+  //   const prepare = async () => {
+  //     // 카메라 권한 요청
+  //     if (!permission || !permission.granted) {
+  //       await requestPermission();
+  //     }
+  
+  //     // ✅ 위치 권한 미리 요청 (iOS에서 필수)
+  //     const { status } = await Location.requestForegroundPermissionsAsync();
+  //     if (status !== 'granted') {
+  //       Alert.alert('위치 권한 필요', 'QR 스캔 기능을 사용하려면 위치 접근 권한이 필요합니다.');
+  //     }
+  
+  //     setLocationGranted(true);
+  //     scanInProgress = false;
+  //   };
+  
+  //   prepare();
+  // }, []);
+
   useEffect(() => {
     const prepare = async () => {
-      // 카메라 권한 요청
-      if (!permission || !permission.granted) {
-        await requestPermission();
+      // 카메라 권한
+      const cam = await requestPermission();
+      if (!cam.granted) {
+        Alert.alert('카메라 권한 필요', 'QR 스캔을 위해 카메라 접근 권한이 필요합니다.');
+        return;
       }
   
-      // ✅ 위치 권한 미리 요청 (iOS에서 필수)
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('위치 권한 필요', 'QR 스캔 기능을 사용하려면 위치 접근 권한이 필요합니다.');
+      // 위치 권한
+      const loc = await Location.requestForegroundPermissionsAsync();
+      if (loc.status !== 'granted') {
+        Alert.alert('위치 권한 필요', 'QR 스캔을 위해 위치 권한이 필요합니다.');
+        return;
       }
   
+      setLocationGranted(true);
       scanInProgress = false;
     };
   
@@ -102,12 +127,6 @@ export default function QRScanScreen() {
     let msg = '', color = '#fff';
 
     try {
-      // ✅ 위치 권한 요청
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        throw new Error('위치 권한이 필요합니다.');
-      }
-
       // ✅ Firestore 기준 위치 가져오기
       const { lat: targetLat, lon: targetLon } = await fetchTargetLocation();
 
@@ -186,7 +205,7 @@ export default function QRScanScreen() {
 return (
   <View style={styles.container}>
     <View style={StyleSheet.absoluteFill}>
-      {cameraActive && (
+    {permission?.granted && locationGranted && cameraActive && (
         <>
           <CameraView
             style={StyleSheet.absoluteFill}
