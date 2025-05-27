@@ -51,26 +51,6 @@ export default function QRScanScreen() {
     };
   };
 
-  // useEffect(() => {
-  //   const prepare = async () => {
-  //     // 카메라 권한 요청
-  //     if (!permission || !permission.granted) {
-  //       await requestPermission();
-  //     }
-  
-  //     // ✅ 위치 권한 미리 요청 (iOS에서 필수)
-  //     const { status } = await Location.requestForegroundPermissionsAsync();
-  //     if (status !== 'granted') {
-  //       Alert.alert('위치 권한 필요', 'QR 스캔 기능을 사용하려면 위치 접근 권한이 필요합니다.');
-  //     }
-  
-  //     setLocationGranted(true);
-  //     scanInProgress = false;
-  //   };
-  
-  //   prepare();
-  // }, []);
-
   useEffect(() => {
     const prepare = async () => {
       // 카메라 권한
