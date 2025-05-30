@@ -39,6 +39,15 @@ export default function CouponsScreen() {
     try {
       await deleteDoc(doc(db, `users/${uuid}/coupons`, selectedCoupon.id));
       await fetchCoupons();
+      await sendPushToUser({
+        uuid,
+        title: '쿠폰 회수 알림',
+        body: '선택한 쿠폰이 관리자에 의해 회수되었습니다.',
+        data: {
+          screen: 'coupons',
+          uuid,
+        },
+      });
     } catch {
       Alert.alert('오류', '회수 중 문제가 발생했습니다.');
     } finally {
@@ -50,6 +59,15 @@ export default function CouponsScreen() {
     try {
       await useOneCoupon(uuid);
       await fetchCoupons();
+      await sendPushToUser({
+        uuid,
+        title: '쿠폰 사용 처리',
+        body: '쿠폰이 정상적으로 사용 처리되었습니다.',
+        data: {
+          screen: 'coupons',
+          uuid,
+        },
+      });
     } catch {
       Alert.alert('오류', '쿠폰 사용 처리 중 문제가 발생했습니다.');
     } finally {
@@ -136,6 +154,13 @@ export default function CouponsScreen() {
               }}
             >
               <View style={[styles.couponBox, item.used && { borderLeftColor: '#ccc', backgroundColor: '#f2f2f2' }]}>
+                {/* 🎯 50% 뱃지 */}
+                {item.isHalf === 'Y' && (
+                  <View style={styles.halfBadge}>
+                    <Text style={styles.halfBadgeText}>50%</Text>
+                  </View>
+                )}
+
                 <View style={styles.couponRow}>
                   <Ionicons name="boat-outline" size={24} color={item.used ? '#999' : '#4CAF50'} style={{ marginRight: 8 }} />
                   <Text style={styles.couponText}>발급일: {item.issuedAt}</Text>
@@ -164,12 +189,46 @@ export default function CouponsScreen() {
               </TouchableOpacity>
             </View>
             <Text style={styles.modalText}>발급일: {selectedCoupon?.issuedAt}</Text>
-            <TouchableOpacity style={[styles.primaryButton, { marginTop: 16 }]} onPress={handleUse}>
+            <TouchableOpacity
+              style={[styles.primaryButton, { marginTop: 16 }]}
+              onPress={() => {
+                Alert.alert(
+                  '쿠폰 사용',
+                  '선택한 쿠폰을 사용 처리하시겠습니까?',
+                  [
+                    { text: '취소', style: 'cancel' },
+                    {
+                      text: '사용',
+                      style: 'default',
+                      onPress: handleUse,
+                    },
+                  ]
+                );
+              }}
+            >
               <Text style={styles.buttonText}>쿠폰 사용</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.primaryButton, { marginTop: 10, backgroundColor: '#f44336' }]} onPress={handleRevoke}>
+
+            <TouchableOpacity
+              style={[styles.primaryButton, { marginTop: 10, backgroundColor: '#f44336' }]}
+              onPress={() => {
+                Alert.alert(
+                  '쿠폰 회수',
+                  '선택한 쿠폰을 회수하시겠습니까?',
+                  [
+                    { text: '취소', style: 'cancel' },
+                    {
+                      text: '회수',
+                      style: 'destructive',
+                      onPress: handleRevoke,
+                    },
+                  ]
+                );
+              }}
+            >
               <Text style={styles.buttonText}>쿠폰 회수</Text>
             </TouchableOpacity>
+
           </View>
         </View>
       </Modal>
@@ -278,6 +337,24 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#fff',
     fontSize: 18,
+    fontFamily: 'GiantRegular',
+  },
+  halfBadge: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
+    backgroundColor: 'gold',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    zIndex: 10,
+    elevation: 3,
+    opacity: 0.9,
+  },
+  
+  halfBadgeText: {
+    color: '#fff',
+    fontSize: 13,
     fontFamily: 'GiantRegular',
   },
 });

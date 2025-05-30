@@ -43,14 +43,26 @@ export default function AdminScreen() {
 
   const fetchMembers = async () => {
     const snapshot = await getDocs(collection(db, 'users'));
-    const list = snapshot.docs.map(doc => ({
+    const users = snapshot.docs.map(doc => ({
       id: doc.id,
+      uuid: doc.data().uuid, // Ensure uuid is explicitly included
       ...doc.data(),
     }));
-    setAllMembers(list);
-    const grouped = groupByInitial(list);
-    setSections(grouped);
+  
+    // 쿠폰 수 병렬 조회
+    const usersWithCoupons = await Promise.all(
+      users.map(async (user) => {
+        const couponsRef = collection(db, `users/${user.uuid}/coupons`);
+        const couponSnap = await getDocs(couponsRef);
+        const activeCoupons = couponSnap.docs.filter(doc => !doc.data().used);
+        return { ...user, couponCount: activeCoupons.length };
+      })
+    );
+  
+    setAllMembers(usersWithCoupons);
+    setSections(groupByInitial(usersWithCoupons));
   };
+  
 
   const groupByInitial = (users: any[]) => {
     const grouped: { [key: string]: any[] } = {};
@@ -153,7 +165,14 @@ export default function AdminScreen() {
                 })
               }
             >
-              <Text style={styles.memberName}>{item.name}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={styles.memberName}>{item.name}</Text>
+                {item.couponCount > 0 && (
+                  <View style={styles.couponBadge}>
+                    <Text style={styles.couponBadgeText}>쿠폰: {item.couponCount}</Text>
+                  </View>
+                )}
+              </View>
               <Text style={styles.memberDob}>{item.dob}</Text>
             </TouchableOpacity>
           );
@@ -245,5 +264,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'GiantRegular',
     marginTop: 30,
+  },
+  couponBadge: {
+    backgroundColor: '#FFEB3B',
+    marginLeft: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  couponBadgeText: {
+    fontSize: 12,
+    fontFamily: 'GiantRegular',
+    color: '#DAA520',
   },
 });

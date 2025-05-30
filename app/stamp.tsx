@@ -1,7 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Alert,
+  Animated,
+  Easing,
   Modal,
   Platform,
   RefreshControl,
@@ -11,7 +14,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import { deleteStamp, getCouponCount, getStamps } from '../utils/stamp-service';
+import { deleteStamp, getCouponCount, getStamps, issue50PercentCoupon } from '../utils/stamp-service';
 
 export default function StampScreen() {
   const { name, dob, uuid, fromAdmin } = useLocalSearchParams<{
@@ -26,6 +29,7 @@ export default function StampScreen() {
   const [selectedStampInfo, setSelectedStampInfo] = useState<{ date: string; method?: string; index?: number; } | null>(null);
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
+  const glowAnim = useRef(new Animated.Value(0)).current;
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -42,11 +46,38 @@ export default function StampScreen() {
     setCouponCount(coupons);
   };
 
+  const groupStamps = (arr: string[]) => {
+    return [
+      arr.slice(0, 4),
+      arr.slice(4, 8),
+      arr.slice(8, 10),
+    ];
+  };
+
   useFocusEffect(
     useCallback(() => {
       fetchStamps();
     }, [uuid])
   );
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowAnim, {
+          toValue: 1,
+          duration: 1000,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: false,
+        }),
+        Animated.timing(glowAnim, {
+          toValue: 0,
+          duration: 1000,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: false,
+        }),
+      ])
+    ).start();
+  }, []);
 
   const renderStamp = (index: number) => {
     const raw = stamps[index];
@@ -60,6 +91,57 @@ export default function StampScreen() {
     ? 'QR 스캔'
     : '알 수 없음';
   
+    if (index === 4 && stamps.length >= 5) {
+      const animatedStyle = {
+        shadowOpacity: glowAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0.2, 0.9],
+        }),
+      };
+    
+      return (
+        <TouchableOpacity
+            key={index}
+            onPress={() => {
+              Alert.alert(
+                '50% 쿠폰 발급',
+                '스탬프 5회 적립으로 50% 할인 쿠폰을 발급하시겠습니까?',
+                [
+                  { text: '취소', style: 'cancel' },
+                  {
+                    text: '발급',
+                    onPress: async () => {
+                      await issue50PercentCoupon(uuid as string);
+                      Alert.alert('🎉 쿠폰 발급 완료', '50% 쿠폰이 발급되었습니다!');
+                      await fetchStamps();
+                    },
+                  },
+                ]
+              );
+            }}
+          >
+          <Animated.View
+            style={[
+              styles.stampBox,
+              {
+                backgroundColor: '#FFF8DC', // 크림색 배경
+                borderColor: 'gold',
+                borderWidth: 3,
+                shadowColor: 'gold',
+                shadowRadius: 8,
+                shadowOffset: { width: 0, height: 0 },
+              },
+              animatedStyle,
+            ]}
+          >
+            <Ionicons name="ticket-outline" size={32} color="gold" />
+            <Text style={[styles.dateText, {  color: '#DAA520' }]}>50%쿠폰</Text>
+          </Animated.View>
+        </TouchableOpacity>
+      );
+    }
+    
+
     return (
       <TouchableOpacity
         key={index}
@@ -101,9 +183,11 @@ export default function StampScreen() {
       </View>
 
       <View style={styles.cardBox}>
-        <View style={styles.grid}>
-          {Array.from({ length: 10 }).map((_, i) => renderStamp(i))}
-        </View>
+        {groupStamps(Array.from({ length: 10 })).map((row, rowIndex) => (
+          <View key={rowIndex} style={styles.stampRow}>
+            {row.map((_, colIndex) => renderStamp(rowIndex * 4 + colIndex))}
+          </View>
+        ))}
       </View>
 
       <View style={styles.buttonWrapper}>
@@ -224,6 +308,12 @@ const styles = StyleSheet.create({
     marginBottom: 0,
     rowGap: 12,
   },
+  stampRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginBottom: 12,
+    gap: 10, // 스탬프 사이 여백
+  },
   stampBox: {
     width: 70,
     height: 70,
@@ -234,6 +324,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#ddd',
+  },
+  glowing: {
+    fontSize: 28,
+    color: '#FFD700', // gold
+    textShadowColor: 'rgba(255, 215, 0, 0.95)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 10,
   },
   stampChecked: {
     fontSize: 28,

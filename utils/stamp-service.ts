@@ -13,10 +13,32 @@ import {
 import { db } from '../firebase';
 import { sendPushToUser } from './send-push';
 import { format } from 'date-fns';
+import { use } from 'react';
+import { Alert } from 'react-native';
 
 /** YYYY-MM-DD 포맷으로 오늘 날짜 반환 */
 function getTodayDate(): string {
   return new Date().toISOString().split('T')[0];
+}
+
+export async function issue50PercentCoupon(uuid: string): Promise<void> {
+  const snap = await getDocs(collection(db, `users/${uuid}/stamps`));
+  const stamps = snap.docs.sort((a, b) =>
+    (a.data().createdAt?.seconds || 0) - (b.data().createdAt?.seconds || 0)
+  );
+
+  if (stamps.length < 5) return;
+
+  const toDelete = stamps.slice(0, 5);
+  await Promise.all(toDelete.map(d => deleteDoc(d.ref)));
+
+  const couponRef = collection(db, `users/${uuid}/coupons`);
+  await addDoc(couponRef, {
+    issuedAt: getTodayDate(),
+    reason: '5회 적립 50% 할인',
+    used: false,
+    isHalf: "Y"
+  });
 }
 
 /** 스탬프 적립 */
@@ -103,7 +125,9 @@ export async function issueCoupon(uuid: string): Promise<void> {
   const couponRef = collection(db, `users/${uuid}/coupons`);
   await addDoc(couponRef, {
     issuedAt: getTodayDate(),
+    reason: '10회 적립 100% 할인',
     used: false,
+    isHalf: "N",
   });
 }
 
@@ -153,8 +177,14 @@ export async function useOneCoupon(uuid: string): Promise<void> {
 
   if (snapshot.empty) throw new Error('사용 가능한 쿠폰이 없습니다.');
 
-  const docToUpdate = snapshot.docs[0].ref;
-  await updateDoc(docToUpdate, { used: true });
+  const docSnap = snapshot.docs[0];
+  const data = docSnap.data();
+
+  if (data.isHalf === 'Y') {
+    throw new Error('즉시 쿠폰 사용 불가 (50% 쿠폰 보유)\n직접 쿠폰을 선택해주세요.');
+  }
+
+  await updateDoc(docSnap.ref, { used: true });
 }
 
 /**
