@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { doc, setDoc } from 'firebase/firestore';
 import React, { useState } from 'react';
+import { useColorScheme } from 'react-native';
 import {
   ActivityIndicator,
   Alert,
@@ -30,6 +31,8 @@ export default function LoginScreen() {
   const [dob, setDob] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  const scheme = useColorScheme();
+  const isDark = scheme === 'dark';
 
   const handleLogin = async () => {
     if (!name || !dob) {
@@ -147,7 +150,7 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1 }}
+      style={{ flex: 1, backgroundColor: isDark ? '#000' : '#fff' }}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={80}
     >
@@ -157,18 +160,34 @@ export default function LoginScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.container}>
-            <Text style={styles.title}>
+            <Text style={[styles.title, { color: isDark ? '#fff' : '#000' }]}>
               오~ Go 피싱에 오신것을 환영 합니다! 🫶{'\n'}즐기는 낚시 🎣 오고~오Go
             </Text>
 
             <TextInput
-              style={styles.input}
+              style={[
+                styles.input,
+                {
+                  backgroundColor: isDark ? '#222' : '#fff',
+                  color: isDark ? '#fff' : '#000',
+                  borderColor: isDark ? '#555' : '#ccc',
+                },
+              ]}
+              placeholderTextColor={isDark ? '#aaa' : '#999'}
               placeholder="이름"
               value={name}
               onChangeText={setName}
             />
             <TextInput
-              style={styles.input}
+              style={[
+                styles.input,
+                {
+                  backgroundColor: isDark ? '#222' : '#fff',
+                  color: isDark ? '#fff' : '#000',
+                  borderColor: isDark ? '#555' : '#ccc',
+                },
+              ]}
+              placeholderTextColor={isDark ? '#aaa' : '#999'}
               placeholder="생년월일 (예: 720610)"
               value={dob}
               onChangeText={setDob}
