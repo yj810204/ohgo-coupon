@@ -213,10 +213,6 @@ export default function MemberDetail() {
             <Text style={styles.infoValue}>{lastStampDate}</Text>
           </View>
         )}
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>UUID:</Text>
-          <Text style={styles.infoValue}>{uuid}</Text>
-        </View>
       </View>
 
       <TouchableOpacity
@@ -320,7 +316,7 @@ export default function MemberDetail() {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    flexGrow: 1,
     padding: 24,
     backgroundColor: '#f6f6f6',
   },
@@ -401,15 +397,15 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   infoLabel: {
-    width: 90, // 라벨 고정 너비
-    fontSize: 16,
+    width: 100, // 라벨 고정 너비
+    fontSize: 14,
     color: '#333',
     fontFamily: 'GiantRegular',
     textAlign: 'right', // 👉 오른쪽 정렬 추가
     marginRight: 8,     // 👉 라벨과 값 사이 여백
   },
   infoValue: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#999',
     fontFamily: 'GiantRegular',
     flexShrink: 1, // 길어지면 줄이기

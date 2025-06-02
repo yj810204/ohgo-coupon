@@ -47,11 +47,11 @@ export default function StampScreen() {
   };
 
   const groupStamps = (arr: string[]) => {
-    return [
-      arr.slice(0, 4),
-      arr.slice(4, 8),
-      arr.slice(8, 10),
-    ];
+    const grouped: string[][] = [];
+    for (let i = 0; i < arr.length; i += 3) {
+      grouped.push(arr.slice(i, i + 3));
+    }
+    return grouped;
   };
 
   useFocusEffect(
@@ -172,7 +172,7 @@ export default function StampScreen() {
       >
         <Text style={filled ? styles.stampChecked : styles.stampEmpty}>
           {filled ? (
-            <Ionicons name="ribbon-outline" size={32} color="#4caf50" />
+            <Ionicons name="ticket-outline" size={32} color="#4caf50" />
           ) : (
             <Ionicons name="ellipse-outline" size={32} color="#ccc" />
           )}
@@ -199,7 +199,7 @@ export default function StampScreen() {
       <View style={styles.cardBox}>
         {groupStamps(Array.from({ length: 10 })).map((row, rowIndex) => (
           <View key={rowIndex} style={styles.stampRow}>
-            {row.map((_, colIndex) => renderStamp(rowIndex * 4 + colIndex))}
+            {row.map((_, colIndex) => renderStamp(rowIndex * 3 + colIndex))}
           </View>
         ))}
       </View>
@@ -221,7 +221,7 @@ export default function StampScreen() {
               router.push({ pathname: '/coupons', params: { uuid, name, dob } })
             }
           >
-            <Text style={styles.buttonText}>보유 쿠폰 / {couponCount}개</Text>
+            <Text style={styles.buttonText}>쿠폰 / {couponCount}개</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -305,7 +305,7 @@ const styles = StyleSheet.create({
     fontFamily: 'GiantRegular',
   },
   dateText: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#666',
     fontFamily: 'GiantRegular',
   },

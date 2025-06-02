@@ -214,18 +214,20 @@ export default function AdminScreen() {
                 })
               }
             >
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View>
                 <Text style={styles.memberName}>{item.name}</Text>
-                {item.stampCount > 0 && (
-                  <View style={styles.stampBadge}>
-                    <Text style={styles.stampBadgeText}>스탬프: {item.stampCount}</Text>
-                  </View>
-                )}
-                {item.couponCount > 0 && (
-                  <View style={styles.couponBadge}>
-                    <Text style={styles.couponBadgeText}>쿠폰: {item.couponCount}</Text>
-                  </View>
-                )}
+                <View style={{ flexDirection: 'row', marginTop: 4 }}>
+                  {item.stampCount > 0 && (
+                    <View style={styles.stampBadge}>
+                      <Text style={styles.stampBadgeText}>스탬프: {item.stampCount}</Text>
+                    </View>
+                  )}
+                  {item.couponCount > 0 && (
+                    <View style={styles.couponBadge}>
+                      <Text style={styles.couponBadgeText}>쿠폰: {item.couponCount}</Text>
+                    </View>
+                  )}
+                </View>
               </View>
               <View style={{ marginTop: 4, alignItems: 'flex-end' }}>
                 <Text style={styles.memberDob}>{item.dob?.slice(2)}</Text>
@@ -250,7 +252,7 @@ const styles = StyleSheet.create({
   },
   cardBox: {
     backgroundColor: '#fff',
-    padding: 16,
+    padding: 12,
     borderRadius: 12,
     marginBottom: 8,
     elevation: 2,
@@ -293,8 +295,8 @@ const styles = StyleSheet.create({
   },
   memberRow: {
     backgroundColor: '#fff',
-    paddingLeft: 16,
-    paddingRight: 16,
+    paddingLeft: 10,
+    paddingRight: 10,
     paddingTop: 8,
     paddingBottom: 8,
     borderRadius: 12,
@@ -333,7 +335,6 @@ const styles = StyleSheet.create({
   },
   couponBadge: {
     backgroundColor: '#FFEB3B',
-    marginLeft: 8,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 6,
@@ -348,7 +349,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 6,
     paddingVertical: 2,
-    marginLeft: 8,
+    marginRight: 8,
   },
   stampBadgeText: {
     color: '#999',

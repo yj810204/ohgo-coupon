@@ -10,6 +10,7 @@ import { useEffect } from 'react';
 import { Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context'; // 설치 필요
 
 Notifications.addNotificationReceivedListener(async (notification) => {
   const title = notification.request.content.title || '';
@@ -127,6 +128,7 @@ export default function TabLayout() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      <SafeAreaView style={styles.safeArea} edges={['top', 'bottom', 'left', 'right']}>
         <Stack
           screenOptions={({ route }) => ({
             header: () => (
@@ -134,17 +136,17 @@ export default function TabLayout() {
             ),
           })}
         >
-        <Stack.Screen name="index" />
-        <Stack.Screen name="login" />
-        <Stack.Screen name="stamp" />
-        <Stack.Screen name="coupons" />
-        <Stack.Screen name="qr-scan" />
-        <Stack.Screen name="admin" />
-        <Stack.Screen name="member-detail" />
-        <Stack.Screen name="+not-found" />
-      </Stack>
-
-      <ExpoStatusBar style="auto" />
+          <Stack.Screen name="index" />
+          <Stack.Screen name="login" />
+          <Stack.Screen name="stamp" />
+          <Stack.Screen name="coupons" />
+          <Stack.Screen name="qr-scan" />
+          <Stack.Screen name="admin" />
+          <Stack.Screen name="member-detail" />
+          <Stack.Screen name="+not-found" />
+        </Stack>
+        <ExpoStatusBar style="auto" />
+      </SafeAreaView>
     </ThemeProvider>
   );
   
@@ -164,6 +166,10 @@ export default function TabLayout() {
         return 'Admin';
       case 'settings':
         return 'Settings';
+      case 'logs':
+        return 'Logs';
+        case 'notification-history':
+          return 'History';
       default:
         return '';
     }
@@ -205,7 +211,7 @@ export default function TabLayout() {
 
 const styles = StyleSheet.create({
   header: {
-    height: 96,
+    height: 50,
     backgroundColor: '#2196F3',
     flexDirection: 'row',
     alignItems: 'center',
@@ -213,7 +219,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
 
     // ✅ 안드로이드 상태바 높이만큼 padding
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 50,
+    //paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 50,
   },
   backBtn: {
     width: 40,
@@ -235,5 +241,9 @@ const styles = StyleSheet.create({
     width: 40,
     justifyContent: 'center',
     alignItems: 'flex-end',
+  },
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#fff',
   },
 });
