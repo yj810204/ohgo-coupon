@@ -1,13 +1,34 @@
 // coupons.tsx
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { collection, deleteDoc, doc, getDoc, getDocs } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDoc, getDocs, Timestamp } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
-import { Alert, FlatList, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { db } from '../firebase';
 import { findCaptains } from '../utils/find-captains';
 import { sendPushToUser } from '../utils/send-push';
-import { useOneCoupon } from '../utils/stamp-service';
+import { useCouponById } from '../utils/stamp-service';
+
+export async function checkPasswordFromFirestore(input: string): Promise<boolean> {
+  const ref = doc(db, 'config', 'password');
+  const snap = await getDoc(ref);
+
+  if (!snap.exists()) {
+    console.warn('❗ config/password 문서가 존재하지 않습니다.');
+    return false;
+  }
+
+  const data = snap.data();
+  const serverPassword = data.value;
+  const type = data.type;
+
+  if (type !== 'useCoupon') {
+    console.warn('❗ type이 useCoupon이 아님:', type);
+    return false;
+  }
+
+  return input === serverPassword;
+}
 
 export default function CouponsScreen() {
   const { uuid, name, dob, fromAdmin } = useLocalSearchParams<{
@@ -21,6 +42,8 @@ export default function CouponsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedCoupon, setSelectedCoupon] = useState<any>(null);
+  const [password, setPassword] = useState('');
+  const [passwordModalVisible, setPasswordModalVisible] = useState(false);
 
   const fetchCoupons = async () => {
     const ref = collection(db, `users/${uuid}/coupons`);
@@ -55,24 +78,32 @@ export default function CouponsScreen() {
     }
   };
 
-  const handleUse = async () => {
-    try {
-      await useOneCoupon(uuid);
-      await fetchCoupons();
-      await sendPushToUser({
-        uuid,
-        title: '쿠폰 사용 처리',
-        body: '쿠폰이 정상적으로 사용 처리되었습니다.',
-        data: {
-          screen: 'coupons',
-          uuid,
+  const handleUse = () => {
+    const messages: string[] = [];
+  
+    const issuedAt = selectedCoupon?.issuedAt;
+    const isTodayIssued =
+      (issuedAt instanceof Timestamp && issuedAt.toDate().toDateString() === new Date().toDateString()) ||
+      (typeof issuedAt === 'string' && issuedAt === new Date().toISOString().split('T')[0]);
+  
+    if (isTodayIssued) messages.push('- 금일 생성된 쿠폰입니다.');
+    if (selectedCoupon?.isHalf === 'Y') messages.push('- 50% 쿠폰입니다.');
+  
+    const warningText =
+      (messages.length > 0 ? messages.join('\n') + '\n\n' : '') + '그래도 사용하시겠습니까?';
+  
+    Alert.alert('쿠폰 사용 확인', warningText, [
+      { text: '아니요', style: 'cancel' },
+      {
+        text: '예',
+        onPress: () => {
+          setModalVisible(false);
+          setTimeout(() => {
+            setPasswordModalVisible(true); // ✅ 여기서만 모달 띄우기
+          }, 200);
         },
-      });
-    } catch {
-      Alert.alert('오류', '쿠폰 사용 처리 중 문제가 발생했습니다.');
-    } finally {
-      setModalVisible(false);
-    }
+      },
+    ]);
   };
 
   const handleRequestToCaptains = async (name: string | string[], uuid: string | string[], dob: string | string[]) => {
@@ -97,6 +128,25 @@ export default function CouponsScreen() {
   useEffect(() => {
     fetchCoupons();
   }, []);
+
+  const formatUsedAt = (usedAt: any): string => {
+    try {
+      if (!usedAt) return '-';
+      let date: Date;
+  
+      if (usedAt.toDate) {
+        date = usedAt.toDate(); // Firestore Timestamp
+      } else if (typeof usedAt === 'string') {
+        date = new Date(usedAt);
+      } else {
+        return '-';
+      }
+  
+      return date.toISOString().slice(2, 10); // yy-mm-dd
+    } catch {
+      return '-';
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -166,7 +216,9 @@ export default function CouponsScreen() {
                   <Text style={styles.couponText}>발급일: {item.issuedAt}</Text>
                 </View>
                 <Text style={{ fontSize: 14, marginTop: 4, color: item.used ? '#999' : '#4CAF50', fontFamily: 'GiantRegular' }}>
-                  상태: {item.used ? '✅ 사용됨 (삭제 가능)' : '🟢 사용 가능'}
+                  {item.used
+                    ? `✅ ${formatUsedAt(item.usedAt)} 사용 (삭제가능)`
+                    : '🟢 사용 가능'}
                 </Text>
               </View>
             </TouchableOpacity>
@@ -229,6 +281,65 @@ export default function CouponsScreen() {
               <Text style={styles.buttonText}>쿠폰 회수</Text>
             </TouchableOpacity>
 
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={passwordModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>관리자 확인</Text>
+            <Text style={styles.modalText}>쿠폰 사용을 위해 비밀번호를 입력하세요</Text>
+            <TextInput
+              style={styles.input}
+              secureTextEntry
+              placeholder="비밀번호"
+              value={password}
+              onChangeText={setPassword}
+            />
+            <TouchableOpacity
+              style={[styles.primaryButton, { marginTop: 16 }]}
+              onPress={async () => {
+                const isValid = await checkPasswordFromFirestore(password);
+
+                if (!isValid) {
+                  Alert.alert('오류', '비밀번호가 일치하지 않습니다.');
+                  return;
+                }
+
+                try {
+                  await useCouponById(uuid, selectedCoupon.id);
+                  await fetchCoupons();
+                  await sendPushToUser({
+                    uuid,
+                    title: '쿠폰 사용 처리',
+                    body: '쿠폰이 정상적으로 사용 처리되었습니다.',
+                    data: {
+                      screen: 'coupons',
+                      uuid,
+                    },
+                  });
+                } catch (e: any) {
+                  Alert.alert('오류', e.message || '쿠폰 사용 처리 중 문제가 발생했습니다.');
+                } finally {
+                  setPassword('');
+                  setPasswordModalVisible(false);
+                  setModalVisible(false);
+                }
+              }}
+            >
+              <Text style={styles.buttonText}>확인</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.primaryButton, { marginTop: 10, backgroundColor: '#aaa' }]}
+              onPress={() => {
+                setPassword('');
+                setPasswordModalVisible(false);
+              }}
+            >
+              <Text style={styles.buttonText}>취소</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -356,5 +467,15 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 13,
     fontFamily: 'GiantRegular',
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 12,
+    fontFamily: 'GiantRegular',
+    fontSize: 16,
   },
 });

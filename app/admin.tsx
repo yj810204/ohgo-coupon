@@ -3,27 +3,32 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { collection, getDocs } from 'firebase/firestore';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-    RefreshControl,
-    SectionList,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  RefreshControl,
+  SectionList,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { db } from '../firebase';
 
 const STORAGE_KEY = 'collapsedSections';
 
 export default function AdminScreen() {
+  const sectionListRef = useRef<SectionList>(null);
+  const [todaySectionIndex, setTodaySectionIndex] = useState<number | null>(null);
+
   useFocusEffect(
     useCallback(() => {
-      fetchMembers(); // ✅ 리스트 새로고침
+      fetchMembers();
     }, [])
   );
+
   const [allMembers, setAllMembers] = useState<any[]>([]);
+  const [todayMembers, setTodayMembers] = useState<any[]>([]);
   const [sections, setSections] = useState<any[]>([]);
   const [keyword, setKeyword] = useState('');
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
@@ -45,24 +50,49 @@ export default function AdminScreen() {
     const snapshot = await getDocs(collection(db, 'users'));
     const users = snapshot.docs.map(doc => ({
       id: doc.id,
-      uuid: doc.data().uuid, // Ensure uuid is explicitly included
+      uuid: doc.data().uuid,
+      createdAt: doc.data().createdAt,
       ...doc.data(),
     }));
-  
-    // 쿠폰 수 병렬 조회
-    const usersWithCoupons = await Promise.all(
+
+    const usersWithStats = await Promise.all(
       users.map(async (user) => {
         const couponsRef = collection(db, `users/${user.uuid}/coupons`);
         const couponSnap = await getDocs(couponsRef);
         const activeCoupons = couponSnap.docs.filter(doc => !doc.data().used);
-        return { ...user, couponCount: activeCoupons.length };
+
+        const stampsRef = collection(db, `users/${user.uuid}/stamps`);
+        const stampSnap = await getDocs(stampsRef);
+        const validStamps = stampSnap.docs;
+
+        return {
+          ...user,
+          couponCount: activeCoupons.length,
+          stampCount: validStamps.length,
+        };
       })
     );
-  
-    setAllMembers(usersWithCoupons);
-    setSections(groupByInitial(usersWithCoupons));
+
+    const today = new Date().toISOString().split('T')[0];
+    const joinedToday = usersWithStats.filter(user =>
+      user.createdAt?.startsWith(today)
+    );
+
+    const grouped = groupByInitial(usersWithStats.filter(user => !user.createdAt?.startsWith(today)));
+    const todaySection = joinedToday.length > 0
+      ? [{
+          title: '오늘 가입한 회원',
+          data: joinedToday,
+        }]
+      : [];
+
+    const fullSections = [...todaySection, ...grouped];
+    setSections(fullSections);
+    setAllMembers(usersWithStats);
+    setTodayMembers(joinedToday);
+    if (joinedToday.length > 0) setTodaySectionIndex(0);
+    else setTodaySectionIndex(null);
   };
-  
 
   const groupByInitial = (users: any[]) => {
     const grouped: { [key: string]: any[] } = {};
@@ -112,7 +142,12 @@ export default function AdminScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.cardBox}>
-        <Text style={styles.title}>회원 검색</Text>
+        <Text style={styles.title}>
+          회원 검색{' '}
+          <Text style={{ fontSize: 16, color: '#555', fontFamily: 'System' }}>
+            ({sections.reduce((acc, sec) => acc + sec.data.length, 0)})
+          </Text>
+        </Text>
         <TextInput
           style={styles.input}
           placeholder="이름으로 검색"
@@ -122,6 +157,7 @@ export default function AdminScreen() {
       </View>
 
       <SectionList
+        ref={sectionListRef}
         sections={sections.map(section => ({
           ...section,
           collapsed: collapsedSections[section.title] ?? false,
@@ -129,22 +165,35 @@ export default function AdminScreen() {
         keyExtractor={(item) => item.uuid}
         stickySectionHeadersEnabled={false}
         refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
         renderSectionHeader={({ section }) => (
           <TouchableOpacity
-            style={styles.sectionHeader}
+            style={[
+              styles.sectionHeader,
+              section.title === '오늘 가입한 회원' && styles.todaySectionHeader,
+            ]}
             activeOpacity={0.7}
             onPress={() => toggleSection(section.title)}
           >
             <Ionicons
               name={section.collapsed ? 'chevron-down' : 'chevron-up'}
               size={16}
-              color="#333"
+              color="#fff"
               style={{ marginRight: 6 }}
             />
-            <Text style={styles.sectionTitle}>{section.title}</Text>
-            <Text style={styles.sectionCount}>({section.data.length})</Text>
+            <Text style={[
+              styles.sectionTitle,
+              section.title === '오늘 가입한 회원' && styles.todaySectionTitle,
+            ]}>
+              {section.title}
+            </Text>
+            <Text style={[
+              styles.sectionCount,
+              section.title === '오늘 가입한 회원' && styles.todaySectionCount,
+            ]}>
+              ({section.data.length})
+            </Text>
           </TouchableOpacity>
         )}
         renderItem={({ item, section }) => {
@@ -167,13 +216,21 @@ export default function AdminScreen() {
             >
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <Text style={styles.memberName}>{item.name}</Text>
+                {item.stampCount > 0 && (
+                  <View style={styles.stampBadge}>
+                    <Text style={styles.stampBadgeText}>스탬프: {item.stampCount}</Text>
+                  </View>
+                )}
                 {item.couponCount > 0 && (
                   <View style={styles.couponBadge}>
                     <Text style={styles.couponBadgeText}>쿠폰: {item.couponCount}</Text>
                   </View>
                 )}
               </View>
-              <Text style={styles.memberDob}>{item.dob}</Text>
+              <View style={{ marginTop: 4, alignItems: 'flex-end' }}>
+                <Text style={styles.memberDob}>{item.dob?.slice(2)}</Text>
+                <Text style={styles.memberCreatedAt}>가입: {item.createdAt?.split('T')[0].slice(2)}</Text>
+              </View>
             </TouchableOpacity>
           );
         }}
@@ -195,14 +252,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     padding: 16,
     borderRadius: 12,
-    marginBottom: 20,
+    marginBottom: 8,
     elevation: 2,
     shadowColor: '#000',
     shadowOpacity: 0.05,
     shadowRadius: 4,
   },
   title: {
-    fontSize: 22,
+    fontSize: 18,
     fontFamily: 'GiantRegular',
     color: '#1e88e5',
     marginBottom: 10,
@@ -210,7 +267,7 @@ const styles = StyleSheet.create({
   input: {
     borderWidth: 1,
     borderColor: '#ccc',
-    padding: 12,
+    padding: 8,
     borderRadius: 8,
     fontSize: 16,
     fontFamily: 'GiantRegular',
@@ -236,7 +293,10 @@ const styles = StyleSheet.create({
   },
   memberRow: {
     backgroundColor: '#fff',
-    padding: 16,
+    paddingLeft: 16,
+    paddingRight: 16,
+    paddingTop: 8,
+    paddingBottom: 8,
     borderRadius: 12,
     marginLeft: 1,
     marginRight: 1,
@@ -249,14 +309,20 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   memberName: {
-    fontSize: 18,
+    fontSize: 16,
     fontFamily: 'GiantRegular',
     color: '#333',
   },
   memberDob: {
     fontSize: 16,
     fontFamily: 'GiantRegular',
-    color: '#888',
+    color: '#333',
+  },
+  memberCreatedAt: {
+    fontSize: 14,
+    fontFamily: 'GiantRegular',
+    color: '#999',
+    marginTop: 0,
   },
   empty: {
     textAlign: 'center',
@@ -275,6 +341,27 @@ const styles = StyleSheet.create({
   couponBadgeText: {
     fontSize: 12,
     fontFamily: 'GiantRegular',
-    color: '#DAA520',
+    color: '#b07000',
+  },
+  stampBadge: {
+    backgroundColor: '#eee',
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginLeft: 8,
+  },
+  stampBadgeText: {
+    color: '#999',
+    fontSize: 12,
+    fontFamily: 'GiantRegular',
+  },
+  todaySectionHeader: {
+    backgroundColor: '#f44336', // 진한 붉은색
+  },
+  todaySectionTitle: {
+    color: '#fff',
+  },
+  todaySectionCount: {
+    color: '#fff',
   },
 });

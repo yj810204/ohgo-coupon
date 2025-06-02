@@ -13,16 +13,16 @@ import { db } from '../firebase';
 import * as Location from 'expo-location';
 
 // 거리 계산 함수
-function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon2: number) {
+function getDistanceFromLatLngInKm(lat1: number, lng1: number, lat2: number, lng2: number) {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos((lat1 * Math.PI) / 180) *
     Math.cos((lat2 * Math.PI) / 180) *
-    Math.sin(dLon / 2) *
-    Math.sin(dLon / 2);
+    Math.sin(dLng / 2) *
+    Math.sin(dLng / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 }
@@ -40,15 +40,18 @@ export default function QRScanScreen() {
   const [messageColor, setMessageColor] = useState('#fff');
 
   // 기준 위치 불러오기
-  const fetchTargetLocation = async (): Promise<{ lat: number; lon: number }> => {
+  const fetchTargetLocation = async (): Promise<{ lat: number; lng: number; limit: number }> => {
     const ref = doc(db, 'config', 'location');
     const snap = await getDoc(ref);
     if (!snap.exists()) throw new Error('기준 위치 정보가 존재하지 않습니다.');
     const data = snap.data();
-    return {
-      lat: data.lat,
-      lon: data.lon,
-    };
+
+    console.log('📍 기준 위치:', data.lat, data.lng, '제한 거리:', data.limitDistanceKm);
+  return {
+    lat: data.lat,
+    lng: data.lng,
+    limit: data.limitDistanceKm || 0.3, // 기본 300m
+  };
   };
 
   useEffect(() => {
@@ -97,34 +100,33 @@ export default function QRScanScreen() {
   const handleScan = async ({ data }: { data: string }) => {
     if (!cameraActive || scanInProgress) return;
     scanInProgress = true;
-    // ✅ 카메라 화면은 유지하고, 스캔만 중지
-    //setCameraActive(false);
-
-    // ✅ 사용자에게 스캐닝 처리중임을 표시
+  
     setMessage('스캔한 QR을 처리 중입니다...');
     setMessageColor('#fff');
-
+  
     let msg = '', color = '#fff';
-
+  
     try {
-      // ✅ Firestore 기준 위치 가져오기
-      const { lat: targetLat, lon: targetLon } = await fetchTargetLocation();
-
-      // ✅ 현재 위치 가져오기
+      // ✅ Firestore 기준 위치
+      const { lat: targetLat, lng: targetLng, limit } = await fetchTargetLocation();
+  
+      // ✅ 현재 위치
       const loc = await withTimeout(
         Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
         }),
         5000 // 5초 제한
       );
-
+  
       const userLat = loc.coords.latitude;
-      const userLon = loc.coords.longitude;
+      const userLng = loc.coords.longitude;
 
-      // ✅ 거리 계산
-      const distance = getDistanceFromLatLonInKm(userLat, userLon, targetLat, targetLon);
-      if (distance > 0.3) { //0.3km = 300m
-        msg = '멤버십 스탬프는 오고피씽 근처(약 300m 이내)에서만 적립할 수 있습니다.';
+      console.log('📍 위치 비교:', userLat, userLng, targetLat, targetLng);
+  
+      // ✅ 거리 계산 (단 한 번만 수행)
+      const distance = getDistanceFromLatLngInKm(userLat, userLng, targetLat, targetLng);
+      if (distance > limit) {
+        msg = `오고피씽 근처(약 ${Math.round(limit * 1000).toLocaleString()}m 이내)에서만 스탬프 적립이 가능합니다.`;
         color = '#f44336';
         setMessage(msg);
         setMessageColor(color);
@@ -134,17 +136,16 @@ export default function QRScanScreen() {
         }, 2000);
         return;
       }
-
+  
+      // ✅ QR 코드 유효성 검사 및 적립
       if (data === 'OHGO-STAMP-BOAT19033326262005') {
         try {
-          // ✅ 타임아웃 적용 (예: 5초)
           await withTimeout(addStamp(String(uuid)), 5000);
-  
           msg = '스탬프가 적립되었어요!\n오늘도 즐거운 낚시 되세요 🎣';
           color = '#4CAF50';
-  
           await handleRequestToCaptains(name, uuid, dob);
         } catch (e: any) {
+          console.error('❗ 오류:', e.message);
           msg = `❗ 오류: ${e.message || '적립 실패'}`;
           color = '#f44336';
         }
@@ -156,16 +157,16 @@ export default function QRScanScreen() {
       msg = `위치 또는 적립 오류: ${e.message}`;
       color = '#f44336';
     }
-
-    // ✅ 메시지 설정
+  
     setMessage(msg);
     setMessageColor(color);
-
+  
     setTimeout(() => {
       scanInProgress = false;
       router.back();
-    }, 2000);
+    }, 5000);
   };
+  
 
   if (!permission) {
     return (

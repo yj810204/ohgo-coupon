@@ -103,21 +103,35 @@ export default function StampScreen() {
         <TouchableOpacity
             key={index}
             onPress={() => {
-              Alert.alert(
-                '50% 쿠폰 발급',
-                '스탬프 5회 적립으로 50% 할인 쿠폰을 발급하시겠습니까?',
-                [
-                  { text: '취소', style: 'cancel' },
-                  {
-                    text: '발급',
-                    onPress: async () => {
-                      await issue50PercentCoupon(uuid as string);
-                      Alert.alert('🎉 쿠폰 발급 완료', '50% 쿠폰이 발급되었습니다!');
-                      await fetchStamps();
+              if (fromAdmin === 'true') {
+                // 🔧 관리자 모드: 회수용 모달 열기
+                const raw = stamps[index];
+                const [date, method, time] = raw ? raw.split('|') : [null, null, null];
+                const methodLabel = method === 'ADMIN' ? '선장님' : method === 'QR' ? 'QR 스캔' : '알 수 없음';
+
+                setSelectedStampInfo({
+                  date: date && time ? `${date} ${time}` : '',
+                  method: methodLabel,
+                  index,
+                });
+                setModalVisible(true);
+              } else {
+                Alert.alert(
+                  '50% 쿠폰 발급',
+                  '스탬프 5회 적립으로 50% 할인 쿠폰을 발급하시겠습니까?',
+                  [
+                    { text: '취소', style: 'cancel' },
+                    {
+                      text: '발급',
+                      onPress: async () => {
+                        await issue50PercentCoupon(uuid as string);
+                        Alert.alert('🎉 쿠폰 발급 완료', '50% 쿠폰이 발급되었습니다!');
+                        await fetchStamps();
+                      },
                     },
-                  },
-                ]
-              );
+                  ]
+                );
+              }
             }}
           >
           <Animated.View

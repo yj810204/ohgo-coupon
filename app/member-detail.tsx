@@ -6,6 +6,7 @@ import { getTodayCouponsStatus } from '../utils/coupon-utils';
 import { sendPushToUser } from '../utils/send-push';
 import {
   addStamp,
+  addStampBatch,
   deleteUser,
   getCouponCount,
   getStamps,
@@ -22,9 +23,15 @@ export default function MemberDetail() {
   const [stampCount, setStampCount] = useState(0);
   const [couponCount, setCouponCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingOne, setIsLoadingOne] = useState(false);
+  const [isLoadingFive, setIsLoadingFive] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
+  const [createdAt, setCreatedAt] = useState('');
+  const [lastStampDate, setLastStampDate] = useState('');
+  const [logs, setLogs] = useState<string[]>([]);
+  const [logsVisible, setLogsVisible] = useState(false)
 
   const onRefresh = async () => {
   setRefreshing(true);
@@ -44,7 +51,19 @@ export default function MemberDetail() {
       const snap = await getDoc(doc(db, 'users', uuid));
       if (snap.exists()) {
         const data = snap.data();
-        setTargetUserIsAdmin(!!data.isAdmin); // boolean으로 변환
+        setTargetUserIsAdmin(!!data.isAdmin);
+        if (data.createdAt) {
+          const ts = typeof data.createdAt === 'string' ? new Date(data.createdAt) : data.createdAt.toDate();
+          setCreatedAt(format(ts, 'yy-MM-dd'));
+        }
+      }
+  
+      // 마지막 스탬프 날짜 계산
+      const stamps = await getStamps(uuid);
+      if (stamps.length > 0) {
+        const last = stamps[stamps.length - 1];
+        const [date, , time] = last.split('|');
+        setLastStampDate(`${date} ${time || ''}`);
       }
     } catch (err) {
       console.warn('회원 정보 로딩 실패:', err);
@@ -57,77 +76,59 @@ export default function MemberDetail() {
   }, [uuid]);
 
   const handleAddStamp = async () => {
-    setIsLoading(true);
+    setIsLoadingOne(true);
     try {
       await addStamp(uuid, 'ADMIN');
       await loadCounts();
   
-      // ✅ 쿠폰 조건 메시지 처리
       if (stampCount + 1 >= 10) {
         Alert.alert('쿠폰 발급', `${name}님에게 쿠폰이 1개 발급되었습니다.`);
       }
-
-      // ✅ 스탬프 적립 푸시 알림 전송
+  
       await sendPushToUser({
         uuid,
         title: '스탬프가 적립되었어요~!',
-        body: `${name}님, 스탬프가 1개 추가되었습니다~! ✨`,
-        data: {
-          screen: 'stamp',
-          uuid,
-          name,
-          dob,
-        }
+        body: `${name}님, 스탬프가 1개 적립되었습니다~! ✨`,
+        data: { screen: 'stamp', uuid, name, dob },
       });
     } catch (err: any) {
       Alert.alert('스탬프 적립 실패', err.message);
     } finally {
-      setIsLoading(false);
+      setIsLoadingOne(false);
     }
   };
 
-  const handleUseCoupon = async () => {
-    if (couponCount <= 0) {
-      Alert.alert('쿠폰 없음', `${name}님은 현재 사용 가능한 쿠폰이 없습니다.`);
-      return;
-    }
+  const handleAddStampFive = async () => {
+    Alert.alert(
+      '스탬프 5회 적립',
+      `${name}님에게 스탬프 5개를 적립하시겠습니까?`,
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '확인',
+          onPress: async () => {
+            setIsLoadingFive(true);
+            try {
+              await addStampBatch(uuid, 5);
+              await loadCounts();
   
-    const today = format(new Date(), 'yyyy-MM-dd');
+              await sendPushToUser({
+                uuid,
+                title: '스탬프 5개가 적립되었어요~!',
+                body: `${name}님, 스탬프가 5개 적립되었습니다~! 🎉`,
+                data: { screen: 'stamp', uuid, name, dob },
+              });
   
-    try {
-      const { usedToday, onlyTodayIssued } = await getTodayCouponsStatus(uuid, today);
-  
-      if (usedToday) {
-        Alert.alert(
-          '확인',
-          `${name}님은 오늘 이미 쿠폰을 사용하셨습니다. 그래도 계속하시겠습니까?`,
-          [
-            { text: '취소', style: 'cancel' },
-            { text: '계속', style: 'destructive', onPress: () => proceedUseCoupon() },
-          ]
-        );
-      } else if (onlyTodayIssued) {
-        Alert.alert(
-          '주의',
-          `${name}님이 보유한 쿠폰은 모두 오늘 발급된 쿠폰입니다. 바로 사용하시겠습니까?`,
-          [
-            { text: '취소', style: 'cancel' },
-            { text: '사용', style: 'default', onPress: () => proceedUseCoupon() },
-          ]
-        );
-      } else {
-        Alert.alert(
-          '쿠폰 사용',
-          `${name}님의 쿠폰을 사용 처리할까요?`,
-          [
-            { text: '취소', style: 'cancel' },
-            { text: '사용', style: 'default', onPress: () => proceedUseCoupon() },
-          ]
-        );
-      }
-    } catch (err) {
-      Alert.alert('확인 실패', '쿠폰 정보 확인 중 오류가 발생했습니다.');
-    }
+              Alert.alert('완료', '스탬프 5개가 적립되었습니다.');
+            } catch (err: any) {
+              Alert.alert('실패', err.message);
+            } finally {
+              setIsLoadingFive(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const proceedUseCoupon = async () => {
@@ -191,8 +192,32 @@ export default function MemberDetail() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
-      <Text style={styles.subtitle}>회원정보 : {name} / {dob}</Text>
-      <Text style={styles.text}>UUID: {uuid}</Text>
+    <View style={{ marginBottom: 12 }}>
+      <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>이름:</Text>
+          <Text style={styles.infoValue}>{name}</Text>
+        </View>
+        <View style={[styles.infoRow, { marginBottom: 12 }]}>
+          <Text style={styles.infoLabel}>생년월일:</Text>
+          <Text style={styles.infoValue}>{dob}</Text>
+        </View>
+        {createdAt !== '' && (
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>가입일:</Text>
+            <Text style={styles.infoValue}>{createdAt}</Text>
+          </View>
+        )}
+        {lastStampDate !== '' && (
+          <View style={[styles.infoRow, { marginBottom: 12 }]}>
+            <Text style={styles.infoLabel}>최근 스탬프:</Text>
+            <Text style={styles.infoValue}>{lastStampDate}</Text>
+          </View>
+        )}
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>UUID:</Text>
+          <Text style={styles.infoValue}>{uuid}</Text>
+        </View>
+      </View>
 
       <TouchableOpacity
         style={styles.card}
@@ -227,10 +252,10 @@ export default function MemberDetail() {
           style={[styles.button, isLoading && { opacity: 0.6 }]}
           onPress={handleAddStamp}
           activeOpacity={0.8}
-          disabled={isLoading}
+          disabled={isLoadingOne || isLoadingFive}
         >
           <View style={styles.buttonContent}>
-            {isLoading ? (
+            {isLoadingOne ? (
               <View style={styles.loadingWrapper}>
                 <ActivityIndicator color="#fff" size="small" style={{ marginRight: 8 }} />
                 <Text style={styles.buttonText}>스탬프 적립 중...</Text>
@@ -240,13 +265,35 @@ export default function MemberDetail() {
             )}
           </View>
         </TouchableOpacity>
-  
+        
         <TouchableOpacity
-          style={[styles.button, { backgroundColor: '#2196F3' }]}
-          onPress={handleUseCoupon}
+          style={[styles.button, isLoading && { opacity: 0.6 }]}
+          onPress={handleAddStampFive}
           activeOpacity={0.8}
+          disabled={isLoadingOne || isLoadingFive}
         >
-          <Text style={styles.buttonText}>쿠폰 사용</Text>
+          <View style={styles.buttonContent}>
+            {isLoadingFive ? (
+              <View style={styles.loadingWrapper}>
+                <ActivityIndicator color="#fff" size="small" style={{ marginRight: 8 }} />
+                <Text style={styles.buttonText}>스탬프 적립 중...</Text>
+              </View>
+            ) : (
+              <Text style={styles.buttonText}>스탬프 +5</Text>
+            )}
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, { backgroundColor: '#607D8B' }]}
+          onPress={() => {
+            router.push({
+              pathname: '/logs',
+              params: { uuid, name },
+            });
+          }}
+        >
+          <Text style={styles.buttonText}>로그 보기</Text>
         </TouchableOpacity>
   
         <TouchableOpacity
@@ -347,5 +394,24 @@ const styles = StyleSheet.create({
   loadingWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+
+  infoRow: {
+    flexDirection: 'row',
+    marginBottom: 4,
+  },
+  infoLabel: {
+    width: 90, // 라벨 고정 너비
+    fontSize: 16,
+    color: '#333',
+    fontFamily: 'GiantRegular',
+    textAlign: 'right', // 👉 오른쪽 정렬 추가
+    marginRight: 8,     // 👉 라벨과 값 사이 여백
+  },
+  infoValue: {
+    fontSize: 16,
+    color: '#999',
+    fontFamily: 'GiantRegular',
+    flexShrink: 1, // 길어지면 줄이기
   },
 });

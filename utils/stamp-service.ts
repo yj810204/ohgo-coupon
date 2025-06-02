@@ -8,13 +8,32 @@ import {
   limit,
   query,
   updateDoc,
-  where
+  where,
+  Timestamp
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { sendPushToUser } from './send-push';
 import { format } from 'date-fns';
-import { use } from 'react';
-import { Alert } from 'react-native';
+
+async function logAction(uuid: string, action: string, detail: string) {
+  const logRef = collection(db, `users/${uuid}/logs`);
+  await addDoc(logRef, {
+    action,
+    detail,
+    timestamp: Timestamp.now(),
+  });
+}
+
+/** 오늘 날짜 기준 시작과 끝 Timestamp 반환 */
+function getTodayRange(): { start: Timestamp; end: Timestamp } {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+  return {
+    start: Timestamp.fromDate(start),
+    end: Timestamp.fromDate(end),
+  };
+}
 
 /** YYYY-MM-DD 포맷으로 오늘 날짜 반환 */
 function getTodayDate(): string {
@@ -39,6 +58,8 @@ export async function issue50PercentCoupon(uuid: string): Promise<void> {
     used: false,
     isHalf: "Y"
   });
+
+  await logAction(uuid, '쿠폰 발급', '5회 적립 50% 할인 쿠폰 발급');
 }
 
 /** 스탬프 적립 */
@@ -46,6 +67,38 @@ export async function addStamp(uuid: string, method: 'QR' | 'ADMIN' = 'QR'): Pro
   const userRef = doc(db, 'users', uuid);
   const stampRef = collection(db, `users/${uuid}/stamps`);
   const now = Date.now();
+
+  // QR 방식일 경우, 오늘 쿠폰 사용 여부 확인
+  if (method === 'QR') {
+    const { start, end } = getTodayRange();
+    const couponRef = collection(db, `users/${uuid}/coupons`);
+    const snapshot = await getDocs(query(couponRef, where('used', '==', true)));
+
+    const hasUsedToday = snapshot.docs.some(doc => {
+      const issuedAt = doc.data().issuedAt;
+      let issuedDate: Date | null = null;
+
+      // Timestamp 타입일 경우
+      if (issuedAt instanceof Timestamp) {
+        issuedDate = issuedAt.toDate();
+      }
+
+      // string 타입일 경우 (예: '2025-06-02')
+      if (typeof issuedAt === 'string') {
+        issuedDate = new Date(issuedAt + 'T00:00:00');
+      }
+
+      return (
+        issuedDate &&
+        issuedDate >= start.toDate() &&
+        issuedDate <= end.toDate()
+      );
+    });
+
+    if (hasUsedToday) {
+      throw new Error('오늘은 쿠폰 사용으로 QR 스탬프 적립이 제한됩니다.\n추가 적립은 선장님께 문의해주세요.');
+    }
+  }
 
   // ✅ 사용자 문서에서 마지막 적립 시간 확인
   const userSnap = await getDoc(userRef);
@@ -61,7 +114,7 @@ export async function addStamp(uuid: string, method: 'QR' | 'ADMIN' = 'QR'): Pro
     const hours = nextAvailable.getHours().toString().padStart(2, '0');
     const minutes = nextAvailable.getMinutes().toString().padStart(2, '0');
 
-    throw new Error(`⏱️ 다음 적립은 ${hours}:${minutes} 이후에 가능합니다.\n추가 적립은 선장님께 문의해주세요.`);
+    throw new Error(`다음 적립은 ${hours}:${minutes} 이후에 가능합니다.\n추가 적립은 선장님께 문의해주세요.`);
   }
 
   // ✅ 1. 새 스탬프 적립
@@ -77,6 +130,8 @@ export async function addStamp(uuid: string, method: 'QR' | 'ADMIN' = 'QR'): Pro
     lastStampTime: stampData.timestamp,
   });
 
+  await logAction(uuid, '스탬프 적립', `${method} 방식으로 1개 적립`);
+
   // ✅ 3. 스탬프 수 확인
   const snapshotAfter = await getDocs(stampRef);
   const totalCount = snapshotAfter.size;
@@ -91,6 +146,58 @@ export async function addStamp(uuid: string, method: 'QR' | 'ADMIN' = 'QR'): Pro
       uuid,
       title: '쿠폰이 발급되었습니다~! 🎁',
       body: '스탬프 10개 도달! 쿠폰이 발급되었어요~!',
+      data: {
+        screen: 'coupons',
+        uuid,
+      },
+    });
+  }
+}
+
+export async function addStampBatch(uuid: string, count: number): Promise<void> {
+  const stampRef = collection(db, `users/${uuid}/stamps`);
+  const userRef = doc(db, 'users', uuid);
+  const now = new Date();
+
+  // ✅ 1. 스탬프 5개 새로 생성
+  const stampDataList = Array.from({ length: count }, (_, i) => ({
+    date: getTodayDate(),
+    method: 'ADMIN',
+    timestamp: new Date(now.getTime() + i), // 밀리초 차이로 구분
+  }));
+
+  for (const data of stampDataList) {
+    await addDoc(stampRef, data);
+  }
+
+  await updateDoc(userRef, {
+    lastStampTime: stampDataList[count - 1].timestamp,
+  });
+
+  await logAction(uuid, '스탬프 적립', `ADMIN 방식으로 5개 적립`);
+
+  // ✅ 2. 전체 스탬프 수 확인 후 쿠폰 처리
+  const allSnap = await getDocs(stampRef);
+  const allStamps = allSnap.docs.sort((a, b) =>
+    (a.data().timestamp?.seconds ?? 0) - (b.data().timestamp?.seconds ?? 0)
+  );
+
+  const totalCount = allStamps.length;
+  const fullCouponCount = Math.floor(totalCount / 10);
+  const remainder = totalCount % 10;
+
+  // ✅ 3. 쿠폰 발급 & 10개씩만 삭제
+  for (let i = 0; i < fullCouponCount; i++) {
+    await issueCoupon(uuid);
+    const toDelete = allStamps.splice(0, 10);
+    await Promise.all(toDelete.map(d => deleteDoc(d.ref)));
+  }
+
+  if (fullCouponCount > 0) {
+    await sendPushToUser({
+      uuid,
+      title: '쿠폰이 발급되었습니다~! 🎁',
+      body: `스탬프 ${fullCouponCount * 10}개 적립! 쿠폰 ${fullCouponCount}개가 발급되었어요~!`,
       data: {
         screen: 'coupons',
         uuid,
@@ -129,6 +236,8 @@ export async function issueCoupon(uuid: string): Promise<void> {
     used: false,
     isHalf: "N",
   });
+
+  await logAction(uuid, '쿠폰 발급', '10회 적립 100% 할인 쿠폰 발급');
 }
 
 /** 스탬프 모두 삭제 */
@@ -138,6 +247,8 @@ export async function clearStamps(uuid: string): Promise<void> {
   for (const docSnap of snapshot.docs) {
     await deleteDoc(docSnap.ref);
   }
+
+  await logAction(uuid, '스탬프 초기화', '10개 스탬프 삭제');
 }
 
 /** 발급된 쿠폰 수 조회 */
@@ -185,7 +296,31 @@ export async function useOneCoupon(uuid: string): Promise<void> {
   }
 
   await updateDoc(docSnap.ref, { used: true });
+  await logAction(uuid, '쿠폰 사용', `자동 선택 쿠폰 사용: ${data.reason || '쿠폰'}`);
 }
+
+export async function useCouponById(uuid: string, couponId: string): Promise<void> {
+  const couponRef = doc(db, `users/${uuid}/coupons/${couponId}`);
+  const couponSnap = await getDoc(couponRef);
+
+  if (!couponSnap.exists()) {
+    throw new Error('해당 쿠폰을 찾을 수 없습니다.');
+  }
+
+  const data = couponSnap.data();
+
+  if (data.used === true) {
+    throw new Error('이미 사용된 쿠폰입니다.');
+  }
+
+  await updateDoc(couponRef, {
+    used: true,
+    usedAt: Timestamp.now(), // ✅ 사용 시점 기록
+  });
+
+  await logAction(uuid, '쿠폰 사용', `${data.reason || '쿠폰'} 사용됨`);
+}
+
 
 /**
  * 사용자 스탬프 중 정확한 timestamp (date|method|time) 일치하는 문서를 삭제
@@ -231,6 +366,7 @@ export async function deleteStamp(uuid: string, value: string, p0: string, p1: s
       });
 
       console.log('✅ 스탬프 삭제 및 푸시 완료');
+      await logAction(uuid, '스탬프 회수', `${date} ${time} ${method} 방식`);
       return;
     }
   }
