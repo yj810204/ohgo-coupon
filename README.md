@@ -1,50 +1,33 @@
-# Welcome to your Expo app 👋
+## 🚀 주요 업데이트 요약
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+### ✨ 승선 정보 입력 기능 추가
 
-## Get started
+* 입력 항목:
 
-1. Install dependencies
+  * 이름, 생년월일 (📆 날짜 선택)
+  * 성별 (모달 선택)
+  * 연락처, 비상 연락처 (📱 자동 하이픈 포맷)
+  * 주소
+  * ✅ 개인정보 수집 및 제3자 제공 동의 체크박스
+* Firestore 저장 구조:
 
-   ```bash
-   npm install
-   ```
+  * `users/{uuid}/boarding/info` 경로에 저장
+  * `getUser()`를 통해 SecureStore의 uuid 기반으로 저장/불러오기 처리
+* 저장 시 모든 항목 유효성 검사 수행
+* 기존 정보가 있을 경우 자동으로 불러와 채워짐
 
-2. Start the app
 
-   ```bash
-   npx expo start
-   ```
+### 📍 QR 스탬프 적립 – GPS 거리 제한 도입
 
-In the output, you'll find options to open the app in a
+* QR 코드 스캔 시 현재 위치를 Firestore 기준 위치와 비교
+* `Location.getLastKnownPositionAsync()` → 실패 시 `getCurrentPositionAsync()` fallback
+* `accuracy: Low` 설정으로 빠른 응답
+* 거리 초과 시 스탬프 적립 제한 및 경고 메시지 표시
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+### 🎨 UI 및 UX 개선
 
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
-```
-
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+* `GiantRegular` 폰트 전역 적용
+* `KeyboardAvoidingView` 및 `ScrollView` 조합으로 키보드 가림 문제 해결
+* 입력 시 자동 스크롤 보정 처리로 Android에서도 안정적인 포커스 유지
+* 생년월일 iOS 확인 버튼 및 Android 자동 반영 처리
