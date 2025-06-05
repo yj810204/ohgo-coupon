@@ -39,13 +39,16 @@ export const notifyAllAdmins = async (newUserName: string) => {
   }
 };
 
-export const sendPushToUser = async (token: string, p0: string, p1: string, {
-    uuid, title, body, data = {}
+export const sendPushToUser = async ({
+  uuid,
+  title,
+  body,
+  data = {},
 }: {
-    uuid: string;
-    title: string;
-    body: string;
-    data?: Record<string, any>;
+  uuid: string;
+  title: string;
+  body: string;
+  data?: Record<string, any>;
 }) => {
   try {
     const snap = await getDoc(doc(db, 'users', uuid));
@@ -93,9 +96,7 @@ export const sendPushToUser = async (token: string, p0: string, p1: string, {
     const text = await response.text();
     console.log('푸시 응답 본문:', text);
 
-    if (response.ok) {
-    //   Alert.alert('전송 완료', '푸시 메시지를 성공적으로 전송했습니다.');
-    } else {
+    if (!response.ok) {
       Alert.alert('푸시 실패', 'Expo 서버에서 오류가 발생했습니다.');
     }
   } catch (error) {
@@ -103,6 +104,7 @@ export const sendPushToUser = async (token: string, p0: string, p1: string, {
     Alert.alert('푸시 실패', '알 수 없는 오류');
   }
 };
+
 
 export const sendPushToAllUsers = async ({
   title,
