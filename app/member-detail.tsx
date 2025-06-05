@@ -225,7 +225,7 @@ export default function MemberDetail() {
           })
         }
       >
-        <Text style={styles.cardLabel}>스탬프 수</Text>
+        <Text style={styles.cardLabel}>스탬프</Text>
         <Text style={styles.cardValue}>{stampCount}</Text>
       </TouchableOpacity>
   
@@ -239,7 +239,7 @@ export default function MemberDetail() {
           })
         }
       >
-        <Text style={styles.cardLabel}>쿠폰 수</Text>
+        <Text style={styles.cardLabel}>쿠폰</Text>
         <Text style={styles.cardValue}>{couponCount}</Text>
       </TouchableOpacity>
   

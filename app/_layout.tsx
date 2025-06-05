@@ -7,10 +7,13 @@ import * as SecureStore from 'expo-secure-store';
 import { canGoBack } from 'expo-router/build/global-state/routing';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Linking, Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context'; // 설치 필요
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '@/firebase';
+import Constants from 'expo-constants';
 
 Notifications.addNotificationReceivedListener(async (notification) => {
   const title = notification.request.content.title || '';
@@ -42,6 +45,46 @@ Notifications.setNotificationHandler({
   }),
 });
 
+function compareVersions(v1: string, v2: string): number {
+  const a = v1.split('.').map(Number);
+  const b = v2.split('.').map(Number);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const diff = (a[i] || 0) - (b[i] || 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+export async function checkAppVersion() {
+  const currentVersion = Constants.expoConfig?.version || '0.0.0';
+
+  try {
+    const snap = await getDoc(doc(db, 'config', 'appVersion'));
+    if (!snap.exists()) return;
+
+    const { minRequired, iosUrl, androidUrl } = snap.data();
+
+    if (compareVersions(currentVersion, minRequired) < 0) {
+      Alert.alert(
+        '업데이트 필요',
+        '오고피씽의 새 버전이 출시되었습니다.\n더 나은 서비스 이용을 위해 지금 업데이트해 주세요.',
+        [
+          {
+            text: '업데이트',
+            onPress: () => {
+              const url = Platform.OS === 'ios' ? iosUrl : androidUrl;
+              Linking.openURL(url);
+            },
+          },
+        ],
+        { cancelable: false }
+      );
+    }
+  } catch (e) {
+    console.warn('버전 체크 실패:', e);
+  }
+}
+
 export default function TabLayout() {
   const colorScheme = useColorScheme();
 
@@ -54,6 +97,8 @@ export default function TabLayout() {
 
   // ✅ 푸시 클릭 이벤트 리스너 등록
   useEffect(() => {
+    checkAppVersion();
+    
     const requestNotificationPermission = async () => {
       const { status } = await Notifications.getPermissionsAsync();
       if (status !== 'granted') {
@@ -168,8 +213,10 @@ export default function TabLayout() {
         return 'Settings';
       case 'logs':
         return 'Logs';
-        case 'notification-history':
-          return 'History';
+      case 'notification-history':
+        return 'History';
+      case 'boarding-form':
+        return 'Boarding';
       default:
         return '';
     }

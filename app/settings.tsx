@@ -102,6 +102,12 @@ export default function SettingsScreen() {
         </Text>
       </View>
       <View style={styles.cardBox}>
+        <Text style={styles.title}>승선 정보 입력</Text>
+        <TouchableOpacity style={styles.submitButton} onPress={() => router.push('/boarding-form')}>
+          <Text style={styles.submitButtonText}>정보 입력하기</Text>
+        </TouchableOpacity>
+      </View>
+      <View style={styles.cardBox}>
         <Text style={styles.title}>계정</Text>
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Text style={styles.logoutButtonText}>로그아웃</Text>
@@ -173,6 +179,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     backgroundColor: '#e3f2fd',
     borderRadius: 8,
+    marginBottom: 8
   },
   historyText: {
     marginLeft: 4,
@@ -180,5 +187,16 @@ const styles = StyleSheet.create({
     color: '#1e88e5',
     fontFamily: 'GiantRegular',
   },
-  
+  submitButton: {
+    marginTop: 10,
+    paddingVertical: 14,
+    backgroundColor: '#1e88e5',
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  submitButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontFamily: 'GiantRegular',
+  },
 });

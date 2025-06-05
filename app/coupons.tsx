@@ -89,22 +89,30 @@ export default function CouponsScreen() {
     if (isTodayIssued) messages.push('- 금일 생성된 쿠폰입니다.');
     if (selectedCoupon?.isHalf === 'Y') messages.push('- 50% 쿠폰입니다.');
   
-    const warningText =
-      (messages.length > 0 ? messages.join('\n') + '\n\n' : '') + '그래도 사용하시겠습니까?';
+    if (messages.length > 0) {
+      const warningText = messages.join('\n') + '\n\n그래도 사용하시겠습니까?';
   
-    Alert.alert('쿠폰 사용 확인', warningText, [
-      { text: '아니요', style: 'cancel' },
-      {
-        text: '예',
-        onPress: () => {
-          setModalVisible(false);
-          setTimeout(() => {
-            setPasswordModalVisible(true); // ✅ 여기서만 모달 띄우기
-          }, 200);
+      Alert.alert('쿠폰 사용 확인', warningText, [
+        { text: '아니요', style: 'cancel' },
+        {
+          text: '예',
+          onPress: () => {
+            setModalVisible(false);
+            setTimeout(() => {
+              setPasswordModalVisible(true);
+            }, 200);
+          },
         },
-      },
-    ]);
+      ]);
+    } else {
+      // 경고 메시지가 없는 경우 바로 비밀번호 모달 오픈
+      setModalVisible(false);
+      setTimeout(() => {
+        setPasswordModalVisible(true);
+      }, 200);
+    }
   };
+  
 
   const handleRequestToCaptains = async (name: string | string[], uuid: string | string[], dob: string | string[]) => {
     const captains = await findCaptains();
@@ -151,7 +159,7 @@ export default function CouponsScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.cardBox}>
-        <Text style={styles.title}>내 쿠폰 목록 {fromAdmin === 'true' && <Text style={styles.adminMode}>(관리자모드)</Text>}</Text>
+        <Text style={styles.title}>쿠폰 목록 {fromAdmin === 'true' && <Text style={styles.adminMode}>(관리자모드)</Text>}</Text>
         <Text style={styles.subtitle}>회원정보: {name} / {dob}</Text>
       </View>
 
@@ -204,22 +212,27 @@ export default function CouponsScreen() {
               }}
             >
               <View style={[styles.couponBox, item.used && { borderLeftColor: '#ccc', backgroundColor: '#f2f2f2' }]}>
-                {/* 🎯 50% 뱃지 */}
-                {item.isHalf === 'Y' && (
-                  <View style={styles.halfBadge}>
-                    <Text style={styles.halfBadgeText}>50%</Text>
-                  </View>
-                )}
-
+                {/* 쿠폰 상단 발급일 */}
                 <View style={styles.couponRow}>
                   <Ionicons name="boat-outline" size={24} color={item.used ? '#999' : '#4CAF50'} style={{ marginRight: 8 }} />
                   <Text style={styles.couponText}>발급일: {item.issuedAt}</Text>
                 </View>
-                <Text style={{ fontSize: 14, marginTop: 4, color: item.used ? '#999' : '#4CAF50', fontFamily: 'GiantRegular' }}>
-                  {item.used
-                    ? `✅ ${formatUsedAt(item.usedAt)} 사용 (삭제가능)`
-                    : '🟢 사용 가능'}
-                </Text>
+
+                {/* 하단 사용 가능 여부 + 50% 뱃지 */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                  <Text style={{ fontSize: 14, color: item.used ? '#999' : '#4CAF50', fontFamily: 'GiantRegular' }}>
+                    {item.used
+                      ? `✅ ${formatUsedAt(item.usedAt)} 사용 (삭제가능)`
+                      : '🟢 사용 가능'}
+                  </Text>
+
+                  {/* 🎯 50% 뱃지 - 오른쪽 정렬 */}
+                  {item.isHalf === 'Y' && (
+                    <View style={[styles.halfBadge, { marginLeft: 8 }]}>
+                      <Text style={styles.halfBadgeText}>50%</Text>
+                    </View>
+                  )}
+                </View>
               </View>
             </TouchableOpacity>
           )}
@@ -350,12 +363,12 @@ export default function CouponsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
+    padding: 14,
     backgroundColor: '#f7f9fc',
   },
   cardBox: {
     backgroundColor: '#fff',
-    padding: 16,
+    padding: 14,
     borderRadius: 12,
     marginBottom: 20,
     elevation: 2,
@@ -383,7 +396,7 @@ const styles = StyleSheet.create({
   },
   couponBox: {
     backgroundColor: '#ffffff',
-    padding: 20,
+    padding: 14,
     borderRadius: 16,
     marginBottom: 16,
     shadowColor: '#000',
@@ -452,11 +465,11 @@ const styles = StyleSheet.create({
   },
   halfBadge: {
     position: 'absolute',
-    top: 20,
-    right: 20,
+    top: 0,
+    right: 0,
     backgroundColor: 'gold',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
     borderRadius: 6,
     zIndex: 10,
     elevation: 3,

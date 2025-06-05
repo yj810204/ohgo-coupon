@@ -118,7 +118,7 @@ export default function StampScreen() {
               } else {
                 Alert.alert(
                   '50% 쿠폰 발급',
-                  '스탬프 5회 적립으로 50% 할인 쿠폰을 발급하시겠습니까?',
+                  '50% 할인 쿠폰을 발급하시겠습니까?',
                   [
                     { text: '취소', style: 'cancel' },
                     {
@@ -149,7 +149,7 @@ export default function StampScreen() {
             ]}
           >
             <Ionicons name="ticket-outline" size={32} color="gold" />
-            <Text style={[styles.dateText, {  color: '#DAA520' }]}>50%쿠폰</Text>
+            <Text style={[styles.dateText, {  color: '#DAA520' }]}>50%</Text>
           </Animated.View>
         </TouchableOpacity>
       );
@@ -177,7 +177,6 @@ export default function StampScreen() {
             <Ionicons name="ellipse-outline" size={32} color="#ccc" />
           )}
         </Text>
-        <Text style={styles.dateText} numberOfLines={1} ellipsizeMode='clip'>{date || '-'}</Text>
       </TouchableOpacity>
     );
   };
@@ -191,7 +190,7 @@ export default function StampScreen() {
     >
       <View style={styles.userInfo}>
         <Text style={styles.title}>
-          스탬프 적립 현황 {fromAdmin === 'true' && <Text style={styles.adminMode}>(관리자모드)</Text>}
+          스탬프 현황 {fromAdmin === 'true' && <Text style={styles.adminMode}>(관리자모드)</Text>}
         </Text>
         <Text style={styles.info}>회원정보 : {name} / {dob}</Text>
       </View>
@@ -283,14 +282,14 @@ export default function StampScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    padding: 24,
+    padding: 14,
     backgroundColor: '#f7f9fc',
     alignItems: 'center',
     minHeight: '100%',
   },
   userInfo: {
     backgroundColor: '#fff',
-    padding: 16,
+    padding: 14,
     borderRadius: 12,
     width: '100%',
     marginBottom: 20,
@@ -329,12 +328,12 @@ const styles = StyleSheet.create({
     gap: 10, // 스탬프 사이 여백
   },
   stampBox: {
-    width: 70,
-    height: 70,
-    margin: 6,
+    width: 65,
+    height: 65,
+    margin: 5,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 24,
+    borderRadius: 20,
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#ddd',

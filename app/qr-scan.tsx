@@ -3,7 +3,7 @@ import {
   useCameraPermissions
 } from 'expo-camera';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import { findCaptains } from '../utils/find-captains';
 import { sendPushToUser } from '../utils/send-push';
@@ -47,11 +47,11 @@ export default function QRScanScreen() {
     const data = snap.data();
 
     console.log('📍 기준 위치:', data.lat, data.lng, '제한 거리:', data.limitDistanceKm);
-  return {
-    lat: data.lat,
-    lng: data.lng,
-    limit: data.limitDistanceKm || 0.3, // 기본 300m
-  };
+    return {
+      lat: data.lat,
+      lng: data.lng,
+      limit: data.limitDistanceKm || 0.3, // 기본 300m
+    };
   };
 
   useEffect(() => {
@@ -97,77 +97,78 @@ export default function QRScanScreen() {
   };
   
 
+  const scanInProgress = useRef(false); // ✅ useRef로 처리 (글로벌 변수 피함)
+
   const handleScan = async ({ data }: { data: string }) => {
-    if (!cameraActive || scanInProgress) return;
-    scanInProgress = true;
-  
+    if (!cameraActive || scanInProgress.current) return;
+    scanInProgress.current = true;
+
+    const showMessageAndBack = (msg: string, color: string, delay = 2000) => {
+      setMessage(msg);
+      setMessageColor(color);
+      setTimeout(() => {
+        scanInProgress.current = false;
+        if (router.canGoBack?.()) router.back();
+      }, delay);
+    };
+
     setMessage('스캔한 QR을 처리 중입니다...');
     setMessageColor('#fff');
-  
-    let msg = '', color = '#fff';
-  
+
     try {
       // ✅ Firestore 기준 위치
       const { lat: targetLat, lng: targetLng, limit } = await fetchTargetLocation();
-  
-      // ✅ 현재 위치
-      const loc = await withTimeout(
-        Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        }),
-        5000 // 5초 제한
-      );
-  
+
+      // ✅ 위치 가져오기: 우선 캐시된 위치 → 실패 시 저정밀도 새 위치
+      let loc = await withTimeout(Location.getLastKnownPositionAsync(), 2000);
+      if (!loc) {
+        loc = await withTimeout(
+          Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Low,
+          }),
+          7000
+        );
+      }
+
+      if (!loc) throw new Error('위치를 가져오지 못했습니다.');
+
       const userLat = loc.coords.latitude;
       const userLng = loc.coords.longitude;
 
       console.log('📍 위치 비교:', userLat, userLng, targetLat, targetLng);
-  
-      // ✅ 거리 계산 (단 한 번만 수행)
+
+      // ✅ 거리 계산
       const distance = getDistanceFromLatLngInKm(userLat, userLng, targetLat, targetLng);
       if (distance > limit) {
-        msg = `오고피씽 근처(약 ${Math.round(limit * 1000).toLocaleString()}m 이내)에서만 스탬프 적립이 가능합니다.`;
-        color = '#f44336';
-        setMessage(msg);
-        setMessageColor(color);
-        setTimeout(() => {
-          scanInProgress = false;
-          router.back();
-        }, 2000);
-        return;
+        return showMessageAndBack(
+          `오고피씽 근처(약 ${Math.round(limit * 1000).toLocaleString()}m 이내)에서만 스탬프 적립이 가능합니다.`,
+          '#f44336'
+        );
       }
-  
+
       // ✅ QR 코드 유효성 검사 및 적립
       if (data === 'OHGO-STAMP-BOAT19033326262005') {
         try {
           await withTimeout(addStamp(String(uuid)), 5000);
-          msg = '스탬프가 적립되었어요!\n오늘도 즐거운 낚시 되세요 🎣';
-          color = '#4CAF50';
           await handleRequestToCaptains(name, uuid, dob);
+          return showMessageAndBack(
+            '스탬프가 적립되었어요!\n오늘도 즐거운 낚시 되세요 🎣',
+            '#4CAF50',
+            5000
+          );
         } catch (e: any) {
           console.error('❗ 오류:', e.message);
-          msg = `❗ 오류: ${e.message || '적립 실패'}`;
-          color = '#f44336';
+          return showMessageAndBack(`❗ 오류: ${e.message || '적립 실패'}`, '#f44336');
         }
       } else {
-        msg = '❌ 잘못된 QR 코드입니다.';
-        color = '#f44336';
+        return showMessageAndBack('❌ 잘못된 QR 코드입니다.', '#f44336');
       }
     } catch (e: any) {
-      msg = `위치 또는 적립 오류: ${e.message}`;
-      color = '#f44336';
+      return showMessageAndBack(`위치 또는 적립 오류: ${e.message}`, '#f44336');
     }
-  
-    setMessage(msg);
-    setMessageColor(color);
-  
-    setTimeout(() => {
-      scanInProgress = false;
-      router.back();
-    }, 5000);
   };
-  
 
+  // ✅ 카메라 권한 체크
   if (!permission) {
     return (
       <View style={styles.centeredContainer}>

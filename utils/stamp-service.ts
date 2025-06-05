@@ -106,8 +106,8 @@ export async function addStamp(uuid: string, method: 'QR' | 'ADMIN' = 'QR'): Pro
     ? userSnap.data()?.lastStampTime?.toMillis?.() ?? 0
     : 0;
 
-  // ✅ QR: 6시간 제한 / ADMIN: 1초 제한
-  const LIMIT_MS = method === 'QR' ? 6 * 60 * 60 * 1000 : 1000;
+  // ✅ QR: 12시간 제한 / ADMIN: 1초 제한
+  const LIMIT_MS = method === 'QR' ? 12 * 60 * 60 * 1000 : 1000;
 
   if (lastStampTime && now - lastStampTime < LIMIT_MS) {
     const nextAvailable = new Date(lastStampTime + LIMIT_MS);
