@@ -25,6 +25,7 @@ import { db } from '../firebase';
 import { loginOrRegisterUser } from '../utils/firebase-auth';
 import { saveUser } from '../utils/secure-store';
 import { notifyAllAdmins } from '../utils/send-push';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function LoginScreen() {
   const [name, setName] = useState('');
@@ -148,86 +149,91 @@ export default function LoginScreen() {
     Linking.openURL('https://www.band.us/band/88348442');
   };
 
+  const backgroundColor = isDark ? '#000' : '#f7f9fc';
+
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: isDark ? '#000' : '#fff' }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={80}
-    >
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <ScrollView
-          contentContainerStyle={styles.scrollContainer}
-          keyboardShouldPersistTaps="handled"
-        >
-          <View style={styles.container}>
-            <Text style={[styles.title, { color: isDark ? '#fff' : '#000' }]}>
-              오~ Go 피싱에 오신것을 환영 합니다! 🫶{'\n'}즐기는 낚시 🎣 오고~오Go
-            </Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: backgroundColor }}>
+      <KeyboardAvoidingView
+        style={{ flex: 1, backgroundColor: isDark ? '#000' : backgroundColor }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <ScrollView
+            contentContainerStyle={styles.scrollContainer}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.container}>
+              <Text style={[styles.title, { color: isDark ? '#fff' : '#000' }]}>
+                오~ Go 피싱에 오신것을 환영 합니다! 🫶{'\n'}즐기는 낚시 🎣 오고~오Go
+              </Text>
 
-            <TextInput
-              style={[
-                styles.input,
-                {
-                  backgroundColor: isDark ? '#222' : '#fff',
-                  color: isDark ? '#fff' : '#000',
-                  borderColor: isDark ? '#555' : '#ccc',
-                },
-              ]}
-              placeholderTextColor={isDark ? '#aaa' : '#999'}
-              placeholder="이름"
-              value={name}
-              onChangeText={setName}
-            />
-            <TextInput
-              style={[
-                styles.input,
-                {
-                  backgroundColor: isDark ? '#222' : '#fff',
-                  color: isDark ? '#fff' : '#000',
-                  borderColor: isDark ? '#555' : '#ccc',
-                },
-              ]}
-              placeholderTextColor={isDark ? '#aaa' : '#999'}
-              placeholder="생년월일 (예: 720610)"
-              value={dob}
-              onChangeText={setDob}
-              keyboardType="numeric"
-            />
-
-            <TouchableOpacity
-              style={[styles.button, isLoading && { opacity: 0.6 }]}
-              onPress={handleLogin}
-              disabled={isLoading}
-            >
-              <View style={styles.buttonContent}>
-                {isLoading ? (
-                  <View style={styles.loadingWrapper}>
-                    <ActivityIndicator color="#fff" size="small" style={{ marginRight: 8 }} />
-                    <Text style={styles.buttonText}>로그인 중...</Text>
-                  </View>
-                ) : (
-                  <Text style={styles.buttonText}>로그인</Text>
-                )}
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.bandButton} onPress={handleNaverBand}>
-              <Image
-                source={require('../assets/images/naver-band-logo.png')}
-                style={styles.bandLogo}
+              <TextInput
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: isDark ? '#222' : '#fff',
+                    color: isDark ? '#fff' : '#000',
+                    borderColor: isDark ? '#555' : '#ccc',
+                  },
+                ]}
+                placeholderTextColor={isDark ? '#aaa' : '#999'}
+                placeholder="이름"
+                value={name}
+                onChangeText={setName}
               />
-              <Text style={styles.bandButtonText}>네이버 밴드 바로가기</Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
-      </TouchableWithoutFeedback>
-    </KeyboardAvoidingView>
+              <TextInput
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: isDark ? '#222' : '#fff',
+                    color: isDark ? '#fff' : '#000',
+                    borderColor: isDark ? '#555' : '#ccc',
+                  },
+                ]}
+                placeholderTextColor={isDark ? '#aaa' : '#999'}
+                placeholder="생년월일 (예: 720610)"
+                value={dob}
+                onChangeText={setDob}
+                keyboardType="numeric"
+              />
+
+              <TouchableOpacity
+                style={[styles.button, isLoading && { opacity: 0.6 }]}
+                onPress={handleLogin}
+                disabled={isLoading}
+              >
+                <View style={styles.buttonContent}>
+                  {isLoading ? (
+                    <View style={styles.loadingWrapper}>
+                      <ActivityIndicator color="#fff" size="small" style={{ marginRight: 8 }} />
+                      <Text style={styles.buttonText}>로그인 중...</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.buttonText}>로그인</Text>
+                  )}
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.bandButton} onPress={handleNaverBand}>
+                <Image
+                  source={require('../assets/images/naver-band-logo.png')}
+                  style={styles.bandLogo}
+                />
+                <Text style={styles.bandButtonText}>네이버 밴드 바로가기</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   scrollContainer: {
     flexGrow: 1,
+    paddingBottom: 20,
   },
   container: {
     flex: 1,
@@ -248,6 +254,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     borderRadius: 8,
     fontSize: 18,
+    height: 50,
   },
   button: {
     backgroundColor: '#2196F3',

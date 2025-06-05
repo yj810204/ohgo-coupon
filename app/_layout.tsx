@@ -6,7 +6,7 @@ import { router, Stack } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { canGoBack } from 'expo-router/build/global-state/routing';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Linking, Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
@@ -95,9 +95,28 @@ export default function TabLayout() {
     GiantRegular: require('../assets/fonts/Giants-Regular.ttf'),
   });
 
+  const [isAdmin, setIsAdmin] = useState(false);
+
   // ✅ 푸시 클릭 이벤트 리스너 등록
   useEffect(() => {
-    checkAppVersion();
+
+    const fetchUserInfo = async () => {
+      try {
+        const userRaw = await SecureStore.getItemAsync('userInfo');
+        if (userRaw) {
+          const user = JSON.parse(userRaw);
+          const snap = await getDoc(doc(db, 'users', user.uuid));
+          if (snap.exists() && snap.data().isAdmin) {
+            setIsAdmin(true);
+          }
+        }
+      } catch (e) {
+        console.warn('관리자 여부 확인 실패:', e);
+      }
+    };
+
+    fetchUserInfo(); // ✅ 관리자 확인 추가
+    checkAppVersion(); // 앱 버전 체크
     
     const requestNotificationPermission = async () => {
       const { status } = await Notifications.getPermissionsAsync();
@@ -175,9 +194,14 @@ export default function TabLayout() {
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom', 'left', 'right']}>
         <Stack
+          key={`stack-${isAdmin}`}
           screenOptions={({ route }) => ({
             header: () => (
-              <CustomHeader title={getTitle(route?.name)} routeName={route.name} />
+              <CustomHeader
+                title={getTitle(route?.name)}
+                routeName={route.name}
+                isAdmin={isAdmin} // ✅ isAdmin 전달
+              />
             ),
           })}
         >
@@ -187,6 +211,7 @@ export default function TabLayout() {
           <Stack.Screen name="coupons" />
           <Stack.Screen name="qr-scan" />
           <Stack.Screen name="admin" />
+          <Stack.Screen name="admin-push" />
           <Stack.Screen name="member-detail" />
           <Stack.Screen name="+not-found" />
         </Stack>
@@ -217,6 +242,8 @@ export default function TabLayout() {
         return 'History';
       case 'boarding-form':
         return 'Boarding';
+      case 'admin-push':
+        return 'Admin';
       default:
         return '';
     }
@@ -225,49 +252,54 @@ export default function TabLayout() {
   type CustomHeaderProps = {
     title: string;
     routeName: string;
+    isAdmin?: boolean; // ✅ isAdmin prop 추가
   };
   
-  function CustomHeader({ title, routeName }: CustomHeaderProps) {
+  function CustomHeader({ title, routeName, isAdmin }: CustomHeaderProps) {
     const navigation = useNavigation();
   
     return (
       <View style={styles.header}>
-        {canGoBack() ? (
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-            <Ionicons name="chevron-back" size={26} color="#fff" />
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.backBtn} />
-        )}
-  
+        {/* 왼쪽 뒤로가기 버튼 */}
+        <View style={styles.sideBtn}>
+          {canGoBack() ? (
+            <TouchableOpacity onPress={() => navigation.goBack()}>
+              <Ionicons name="chevron-back" size={26} color="#fff" />
+            </TouchableOpacity>
+          ) : (
+            <View style={{ width: 26 }} />
+          )}
+        </View>
+
+        {/* 중앙 타이틀 */}
         <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">
           {title}
         </Text>
-  
-        {!['login', 'settings'].includes(routeName) ? (
-          <TouchableOpacity onPress={() => router.push('/settings')} style={styles.rightBtn}>
-            <Ionicons name="settings-outline" size={26} color="#fff" />
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.rightBtn} />
-        )}
+
+        {/* 오른쪽 버튼 영역 */}
+        <View style={styles.sideBtnRight}>
+          {isAdmin && routeName !== 'admin-push' && (
+            <TouchableOpacity
+              onPress={() => router.push('/admin-push')}
+              style={{ marginRight: !['login', 'settings'].includes(routeName) ? 10 : 0 }}
+            >
+              <Ionicons name="megaphone-outline" size={24} color="#fff" />
+            </TouchableOpacity>
+          )}
+
+          {/* 설정 버튼은 settings 화면 아닐 때만 표시 */}
+          {!['login', 'settings'].includes(routeName) && (
+            <TouchableOpacity onPress={() => router.push('/settings')}>
+              <Ionicons name="settings-outline" size={26} color="#fff" />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     );
   }  
 }
 
 const styles = StyleSheet.create({
-  header: {
-    height: 50,
-    backgroundColor: '#2196F3',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-
-    // ✅ 안드로이드 상태바 높이만큼 padding
-    //paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 50,
-  },
   backBtn: {
     width: 40,
     justifyContent: 'center',
@@ -277,13 +309,6 @@ const styles = StyleSheet.create({
     fontSize: 24,
     color: '#fff',
   },
-  title: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: 20,
-    color: '#fff',
-    fontFamily: 'GiantInline',
-  },
   rightBtn: {
     width: 40,
     justifyContent: 'center',
@@ -292,5 +317,33 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  header: {
+    height: 50,
+    backgroundColor: '#2196F3',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+  },
+  sideBtn: {
+    width: 80,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+  sideBtnRight: {
+    width: 80,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end', // ✅ 알림 버튼을 오른쪽으로 밀기
+  },
+  
+  title: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 20,
+    color: '#fff',
+    fontFamily: 'GiantInline',
   },
 });

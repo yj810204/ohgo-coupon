@@ -236,6 +236,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
+    marginBottom: 60,
   },
   title: {
     fontSize: 20,
@@ -256,7 +257,7 @@ const styles = StyleSheet.create({
     borderColor: '#ccc',
     borderRadius: 6,
     paddingHorizontal: 10,
-    backgroundColor: '#f9f9f9',
+    backgroundColor: '#fff',
     justifyContent: 'center',
     fontFamily: 'GiantRegular',
   },

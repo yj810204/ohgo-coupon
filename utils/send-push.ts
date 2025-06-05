@@ -39,16 +39,13 @@ export const notifyAllAdmins = async (newUserName: string) => {
   }
 };
 
-export const sendPushToUser = async ({
-  uuid,
-  title,
-  body,
-  data = {}
+export const sendPushToUser = async (token: string, p0: string, p1: string, {
+    uuid, title, body, data = {}
 }: {
-  uuid: string;
-  title: string;
-  body: string;
-  data?: Record<string, any>;
+    uuid: string;
+    title: string;
+    body: string;
+    data?: Record<string, any>;
 }) => {
   try {
     const snap = await getDoc(doc(db, 'users', uuid));
@@ -106,3 +103,53 @@ export const sendPushToUser = async ({
     Alert.alert('푸시 실패', '알 수 없는 오류');
   }
 };
+
+export const sendPushToAllUsers = async ({
+  title,
+  body,
+  data = {},
+}: {
+  title: string;
+  body: string;
+  data?: Record<string, any>;
+}) => {
+  try {
+    const snapshot = await getDocs(collection(db, 'users'));
+
+    const userList = snapshot.docs
+      .map(doc => doc.data())
+      .filter(user => user.expoPushToken);
+
+    if (userList.length === 0) {
+      Alert.alert('알림 실패', '푸시 토큰이 있는 사용자가 없습니다.');
+      return;
+    }
+
+    for (const user of userList) {
+      const payload = {
+        to: user.expoPushToken,
+        sound: 'default',
+        title,
+        body,
+        data,
+      };
+
+      await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Accept-Encoding': 'gzip, deflate',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+    }
+
+    Alert.alert('발송 완료', `${userList.length}명에게 푸시알림을 보냈습니다.`);
+    console.log(`✅ ${userList.length}명에게 전체 푸시 전송 완료`);
+  } catch (error) {
+    console.error('❗전체 푸시 전송 실패:', error);
+    Alert.alert('푸시 실패', '전체 사용자에게 푸시 전송 중 오류가 발생했습니다.');
+  }
+};
+
