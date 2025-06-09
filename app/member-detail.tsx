@@ -76,32 +76,44 @@ export default function MemberDetail() {
   }, [uuid]);
 
   const handleAddStamp = async () => {
-    setIsLoadingOne(true);
-    try {
-      await addStamp(uuid, 'ADMIN');
-      await loadCounts();
+    Alert.alert(
+      '스탬프 1회 적립',
+      `${name}님에게 스탬프 1개를\n적립하시겠습니까?`,
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '확인',
+          onPress: async () => {
+            setIsLoadingOne(true);
+            try {
+              await addStamp(uuid, 'ADMIN');
+              await loadCounts();
   
-      if (stampCount + 1 >= 10) {
-        Alert.alert('쿠폰 발급', `${name}님에게 쿠폰이 1개 발급되었습니다.`);
-      }
+              if (stampCount + 1 >= 10) {
+                Alert.alert('쿠폰 발급', `${name}님에게 쿠폰이 1개 발급되었습니다.`);
+              }
   
-      await sendPushToUser({
-        uuid,
-        title: '스탬프가 적립되었어요~!',
-        body: `${name}님, 스탬프가 1개 적립되었습니다~! ✨`,
-        data: { screen: 'stamp', uuid, name, dob },
-      });
-    } catch (err: any) {
-      Alert.alert('스탬프 적립 실패', err.message);
-    } finally {
-      setIsLoadingOne(false);
-    }
+              await sendPushToUser({
+                uuid,
+                title: '스탬프가 적립되었어요~!',
+                body: `${name}님, 스탬프가 1개 적립되었습니다~! ✨`,
+                data: { screen: 'stamp', uuid, name, dob },
+              });
+            } catch (err: any) {
+              Alert.alert('스탬프 적립 실패', err.message);
+            } finally {
+              setIsLoadingOne(false);
+            }
+          },
+        },
+      ]
+    );
   };
-
+  
   const handleAddStampFive = async () => {
     Alert.alert(
       '스탬프 5회 적립',
-      `${name}님에게 스탬프 5개를 적립하시겠습니까?`,
+      `${name}님에게 스탬프 5개를\n적립하시겠습니까?`,
       [
         { text: '취소', style: 'cancel' },
         {
@@ -162,7 +174,7 @@ export default function MemberDetail() {
   
     Alert.alert(
       '회원 삭제',
-      `${name}님의 모든 데이터가 삭제됩니다. 진행할까요?`,
+      `${name}님의 모든 데이터가 삭제됩니다.\n진행할까요?`,
       [
         { text: '취소', style: 'cancel' },
         {
@@ -197,22 +209,27 @@ export default function MemberDetail() {
           <Text style={styles.infoLabel}>이름:</Text>
           <Text style={styles.infoValue}>{name}</Text>
         </View>
-        <View style={[styles.infoRow, { marginBottom: 12 }]}>
+        <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>생년월일:</Text>
-          <Text style={styles.infoValue}>{dob}</Text>
+          <Text style={styles.infoValue}>
+            {dob?.length === 8
+              ? `${dob.slice(2, 4)}-${dob.slice(4, 6)}-${dob.slice(6, 8)}`
+              : dob}
+          </Text>
         </View>
-        {createdAt !== '' && (
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>가입일:</Text>
-            <Text style={styles.infoValue}>{createdAt}</Text>
-          </View>
-        )}
-        {lastStampDate !== '' && (
-          <View style={[styles.infoRow, { marginBottom: 12 }]}>
-            <Text style={styles.infoLabel}>최근 스탬프:</Text>
-            <Text style={styles.infoValue}>{lastStampDate}</Text>
-          </View>
-        )}
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>가입일:</Text>
+          <Text style={styles.infoValue}>{createdAt}</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.infoRow}
+          onPress={() => Alert.alert('UUID', uuid)}
+        >
+          <Text style={styles.infoLabel}>UUID:</Text>
+          <Text style={[styles.infoValue, { textDecorationLine: 'underline', color: '#1e88e5' }]}>
+            눌러서 확인
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <TouchableOpacity

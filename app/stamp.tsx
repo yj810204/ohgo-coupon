@@ -39,12 +39,22 @@ export default function StampScreen() {
 
   const fetchStamps = async () => {
     if (typeof uuid !== 'string') return;
+  
     const data = await getStamps(uuid);
-    setStamps(data);
-
+  
+    // ✅ 날짜 + 시간 기준으로 최신순 정렬
+    const sorted = [...data].sort((a, b) => {
+      const [dateA, , timeA] = a.split('|');
+      const [dateB, , timeB] = b.split('|');
+      return new Date(`${dateB}T${timeB}`).getTime() - new Date(`${dateA}T${timeA}`).getTime();
+    });
+  
+    setStamps(sorted);
+  
     const coupons = await getCouponCount(uuid);
     setCouponCount(coupons);
   };
+  
 
   const groupStamps = (arr: string[]) => {
     const grouped: string[][] = [];
@@ -79,109 +89,73 @@ export default function StampScreen() {
     ).start();
   }, []);
 
-  const renderStamp = (index: number) => {
-    const raw = stamps[index];
-    const filled = !!raw;
+  const renderStampItem = (raw: string, index: number) => {
+    if (!raw) return null;
+    const [date, method, time] = raw.split('|');
+    const methodLabel = method === 'ADMIN' ? '선장님' : method === 'QR' ? 'QR 스캔' : '알 수 없음';
   
-    const [date, method, time] = raw ? raw.split('|') : [null, null, null];
-
-    const methodLabel = method === 'ADMIN'
-    ? '선장님'
-    : method === 'QR'
-    ? 'QR 스캔'
-    : '알 수 없음';
+    const fifthStampRaw = stamps[stamps.length - 5];
+    const isFifth = raw === fifthStampRaw && stamps.length >= 5;
   
-    if (index === 4 && stamps.length >= 5) {
-      const animatedStyle = {
-        shadowOpacity: glowAnim.interpolate({
-          inputRange: [0, 1],
-          outputRange: [0.2, 0.9],
-        }),
-      };
-    
-      return (
-        <TouchableOpacity
-            key={index}
-            onPress={() => {
-              if (fromAdmin === 'true') {
-                // 🔧 관리자 모드: 회수용 모달 열기
-                const raw = stamps[index];
-                const [date, method, time] = raw ? raw.split('|') : [null, null, null];
-                const methodLabel = method === 'ADMIN' ? '선장님' : method === 'QR' ? 'QR 스캔' : '알 수 없음';
-
-                setSelectedStampInfo({
-                  date: date && time ? `${date} ${time}` : '',
-                  method: methodLabel,
-                  index,
-                });
-                setModalVisible(true);
-              } else {
-                Alert.alert(
-                  '50% 쿠폰 발급',
-                  '50% 할인 쿠폰을 발급하시겠습니까?',
-                  [
-                    { text: '취소', style: 'cancel' },
-                    {
-                      text: '발급',
-                      onPress: async () => {
-                        await issue50PercentCoupon(uuid as string);
-                        Alert.alert('🎉 쿠폰 발급 완료', '50% 쿠폰이 발급되었습니다!');
-                        await fetchStamps();
-                      },
-                    },
-                  ]
-                );
-              }
-            }}
-          >
-          <Animated.View
-            style={[
-              styles.stampBox,
-              {
-                backgroundColor: '#FFF8DC', // 크림색 배경
-                borderColor: 'gold',
-                borderWidth: 3,
-                shadowColor: 'gold',
-                shadowRadius: 8,
-                shadowOffset: { width: 0, height: 0 },
-              },
-              animatedStyle,
-            ]}
-          >
-            <Ionicons name="ticket-outline" size={32} color="gold" />
-            <Text style={[styles.dateText, {  color: '#DAA520' }]}>50%</Text>
-          </Animated.View>
-        </TouchableOpacity>
-      );
-    }
-    
-
     return (
       <TouchableOpacity
         key={index}
-        style={styles.stampBox}
-        disabled={!filled}
         onPress={() => {
-          setSelectedStampInfo({
-            date: date && time ? `${date} ${time}` : '',
-            method: methodLabel || undefined,
-            index,
-          });
-          setModalVisible(true);
+          if (isFifth && fromAdmin !== 'true') {
+            Alert.alert(
+              '50% 쿠폰 발급',
+              '50% 할인 쿠폰을 발급하시겠습니까?',
+              [
+                { text: '취소', style: 'cancel' },
+                {
+                  text: '발급',
+                  onPress: async () => {
+                    await issue50PercentCoupon(uuid as string);
+                    Alert.alert('🎉 쿠폰 발급 완료', '50% 쿠폰이 발급되었습니다!');
+                    await fetchStamps();
+                  },
+                },
+              ]
+            );
+          } else {
+            setSelectedStampInfo({
+              date: `${date} ${time}`,
+              method: methodLabel,
+              index,
+            });
+            setModalVisible(true);
+          }
         }}
       >
-        <Text style={filled ? styles.stampChecked : styles.stampEmpty}>
-          {filled ? (
-            <Ionicons name="ticket-outline" size={32} color="#4caf50" />
-          ) : (
-            <Ionicons name="ellipse-outline" size={32} color="#ccc" />
-          )}
-        </Text>
+        <View
+          style={[
+            styles.stampItem,
+            isFifth && {
+              backgroundColor: '#FFF8DC',
+              borderLeftWidth: 4,
+              borderLeftColor: 'gold'
+            },
+          ]}
+        >
+          <Ionicons
+            name="ticket-outline"
+            size={24}
+            color={isFifth ? 'gold' : '#4caf50'}
+            style={{ marginRight: 12 }}
+          />
+          <View>
+            <Text style={[styles.stampDate, isFifth && { color: '#DAA520' }]}>
+              {date.replace(/-/g, '-')}, {time?.slice(0, 5)}
+            </Text>
+            <Text style={[styles.stampMethod, isFifth && { color: '#DAA520' }]}>
+              {isFifth ? '⭐ 50% 쿠폰 발급 가능 ⭐' : `적립 방법: ${methodLabel}`}
+            </Text>
+          </View>
+        </View>
       </TouchableOpacity>
     );
-  };
+  };  
   
-
   return (
     <View style={{ flex: 1, backgroundColor: '#f7f9fc' }}>
       <ScrollView
@@ -192,16 +166,16 @@ export default function StampScreen() {
         <Text style={styles.title}>
           스탬프 현황 {fromAdmin === 'true' && <Text style={styles.adminMode}>(관리자모드)</Text>}
         </Text>
-        <Text style={styles.info}>회원정보 : {name} / {dob}</Text>
+        <Text style={styles.info}>회원정보 : {name} / {dob?.length === 8 ? `${dob.slice(2, 4)}-${dob.slice(4, 6)}-${dob.slice(6, 8)}` : dob}</Text>
       </View>
 
-      <View style={styles.cardBox}>
-        {groupStamps(Array.from({ length: 10 })).map((row, rowIndex) => (
-          <View key={rowIndex} style={styles.stampRow}>
-            {row.map((_, colIndex) => renderStamp(rowIndex * 3 + colIndex))}
-          </View>
-        ))}
-      </View>
+      {stamps.length === 0 ? (
+        <Text style={styles.empty}>스탬프가 아직 없어요!</Text>
+      ) : (
+        <View style={styles.cardBox}>
+          {stamps.map((stamp, index) => renderStampItem(stamp, index))}
+        </View>
+      )}
 
       <View style={styles.buttonWrapper}>
         {/* <TouchableOpacity
@@ -220,7 +194,7 @@ export default function StampScreen() {
               router.push({ pathname: '/coupons', params: { uuid, name, dob } })
             }
           >
-            <Text style={styles.buttonText}>쿠폰 / {couponCount}개</Text>
+            <Text style={styles.buttonText}>보유 쿠폰: {couponCount}개</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -372,14 +346,28 @@ const styles = StyleSheet.create({
   },
   cardBox: {
     backgroundColor: '#fff',
-    padding: 16,
-    borderRadius: 12,
+    padding: 12,
     width: '100%',
     marginBottom: 12,
     elevation: 2,
     shadowColor: '#000',
     shadowOpacity: 0.05,
     shadowRadius: 4,
+  },
+  emptyStampBox: {
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+  emptyStampText: {
+    fontSize: 16,
+    fontFamily: 'GiantRegular',
+    color: '#333',
+    marginBottom: 4,
+  },
+  emptyStampSub: {
+    fontSize: 14,
+    fontFamily: 'GiantRegular',
+    color: '#888',
   },
   floatingButton: {
     position: 'absolute',
@@ -388,7 +376,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#2196F3',
+    backgroundColor: '#fb2f86',
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 6,
@@ -430,4 +418,37 @@ const styles = StyleSheet.create({
     color: '#f44336',
     fontFamily: 'GiantRegular',
   },
+  stampItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    borderRadius: 8
+  },
+  stampDate: {
+    fontSize: 14,
+    fontFamily: 'GiantRegular',
+    color: '#333',
+  },
+  stampMethod: {
+    fontSize: 12,
+    fontFamily: 'GiantRegular',
+    color: '#888',
+    marginTop: 2,
+  },
+  empty: {
+    fontSize: 16,
+    color: '#999',
+    marginTop: 30,
+    marginBottom: 40,
+    textAlign: 'center',
+    fontFamily: 'GiantRegular',
+  },
+  subtitle: {
+    fontSize: 14,
+    fontFamily: 'GiantRegular',
+    color: '#666',
+  },  
 });

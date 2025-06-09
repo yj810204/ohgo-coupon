@@ -160,7 +160,7 @@ export default function CouponsScreen() {
     <View style={styles.container}>
       <View style={styles.cardBox}>
         <Text style={styles.title}>쿠폰 목록 {fromAdmin === 'true' && <Text style={styles.adminMode}>(관리자모드)</Text>}</Text>
-        <Text style={styles.subtitle}>회원정보: {name} / {dob}</Text>
+        <Text style={styles.subtitle}>회원정보: {name} / {dob?.length === 8 ? `${dob.slice(2, 4)}-${dob.slice(4, 6)}-${dob.slice(6, 8)}` : dob}</Text>
       </View>
 
       {coupons.length === 0 ? (

@@ -101,12 +101,12 @@ export default function SettingsScreen() {
           알림을 끄면 스탬프 적립 및 쿠폰 발급 알림을 받을 수 없습니다.
         </Text>
       </View>
-      <View style={styles.cardBox}>
+      {/* <View style={styles.cardBox}>
         <Text style={styles.title}>승선 정보 입력</Text>
         <TouchableOpacity style={styles.submitButton} onPress={() => router.push('/boarding-form')}>
           <Text style={styles.submitButtonText}>정보 입력하기</Text>
         </TouchableOpacity>
-      </View>
+      </View> */}
       <View style={styles.cardBox}>
         <Text style={styles.title}>계정</Text>
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>

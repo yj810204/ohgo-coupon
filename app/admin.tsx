@@ -230,7 +230,9 @@ export default function AdminScreen() {
                 </View>
               </View>
               <View style={{ marginTop: 4, alignItems: 'flex-end' }}>
-                <Text style={styles.memberDob}>{item.dob?.slice(2)}</Text>
+                <Text style={styles.memberDob}>
+                {item.dob?.length === 8 ? `${item.dob.slice(2, 4)}-${item.dob.slice(4, 6)}-${item.dob.slice(6, 8)}` : item.dob}
+                </Text>
                 <Text style={styles.memberCreatedAt}>가입: {item.createdAt?.split('T')[0].slice(2)}</Text>
               </View>
             </TouchableOpacity>

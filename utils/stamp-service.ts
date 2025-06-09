@@ -159,11 +159,11 @@ export async function addStampBatch(uuid: string, count: number): Promise<void> 
   const userRef = doc(db, 'users', uuid);
   const now = new Date();
 
-  // ✅ 1. 스탬프 5개 새로 생성
+  // ✅ 1. 스탬프 5개 생성 - 1초씩 차이나게
   const stampDataList = Array.from({ length: count }, (_, i) => ({
     date: getTodayDate(),
     method: 'ADMIN',
-    timestamp: new Date(now.getTime() + i), // 밀리초 차이로 구분
+    timestamp: new Date(now.getTime() + i * 1000), // ✅ 1초씩 차이
   }));
 
   for (const data of stampDataList) {
@@ -174,7 +174,7 @@ export async function addStampBatch(uuid: string, count: number): Promise<void> 
     lastStampTime: stampDataList[count - 1].timestamp,
   });
 
-  await logAction(uuid, '스탬프 적립', `ADMIN 방식으로 5개 적립`);
+  await logAction(uuid, '스탬프 적립', `ADMIN 방식으로 ${count}개 적립`);
 
   // ✅ 2. 전체 스탬프 수 확인 후 쿠폰 처리
   const allSnap = await getDocs(stampRef);
@@ -184,9 +184,8 @@ export async function addStampBatch(uuid: string, count: number): Promise<void> 
 
   const totalCount = allStamps.length;
   const fullCouponCount = Math.floor(totalCount / 10);
-  const remainder = totalCount % 10;
 
-  // ✅ 3. 쿠폰 발급 & 10개씩만 삭제
+  // ✅ 3. 쿠폰 발급 & 스탬프 삭제
   for (let i = 0; i < fullCouponCount; i++) {
     await issueCoupon(uuid);
     const toDelete = allStamps.splice(0, 10);
