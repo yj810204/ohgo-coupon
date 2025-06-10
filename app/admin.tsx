@@ -52,6 +52,7 @@ export default function AdminScreen() {
       id: doc.id,
       uuid: doc.data().uuid,
       createdAt: doc.data().createdAt,
+      lastStampTime: doc.data().lastStampTime,
       ...doc.data(),
     }));
 
@@ -74,23 +75,50 @@ export default function AdminScreen() {
     );
 
     const today = new Date().toISOString().split('T')[0];
+
     const joinedToday = usersWithStats.filter(user =>
       user.createdAt?.startsWith(today)
     );
 
-    const grouped = groupByInitial(usersWithStats.filter(user => !user.createdAt?.startsWith(today)));
-    const todaySection = joinedToday.length > 0
-      ? [{
-          title: '오늘 가입한 회원',
-          data: joinedToday,
-        }]
-      : [];
+    const todayKST = new Date();
+    todayKST.setHours(todayKST.getHours() + 9); // UTC → KST 변환
+    const todayDateStr = todayKST.toISOString().split('T')[0];
 
-    const fullSections = [...todaySection, ...grouped];
+    const stampedToday = usersWithStats.filter(user => {
+      if (!user.lastStampTime?.seconds) return false;
+
+      const kst = new Date(user.lastStampTime.seconds * 1000);
+      kst.setHours(kst.getHours() + 9); // UTC → KST 보정
+
+      const stampDate = kst.toISOString().split('T')[0];
+      return stampDate === todayDateStr;
+    });
+
+    const grouped = groupByInitial(
+      usersWithStats.filter(
+        user => !joinedToday.includes(user) && !stampedToday.includes(user)
+      )
+    );
+
+    const todaySections = [];
+    if (joinedToday.length > 0) {
+      todaySections.push({
+        title: '오늘 가입한 회원',
+        data: joinedToday,
+      });
+    }
+    if (stampedToday.length > 0) {
+      todaySections.push({
+        title: '오늘 스탬프 적립',
+        data: stampedToday,
+      });
+    }
+
+    const fullSections = [...todaySections, ...grouped];
     setSections(fullSections);
     setAllMembers(usersWithStats);
     setTodayMembers(joinedToday);
-    if (joinedToday.length > 0) setTodaySectionIndex(0);
+    if (todaySections.length > 0) setTodaySectionIndex(0);
     else setTodaySectionIndex(null);
   };
 
@@ -172,6 +200,7 @@ export default function AdminScreen() {
             style={[
               styles.sectionHeader,
               section.title === '오늘 가입한 회원' && styles.todaySectionHeader,
+              section.title === '오늘 스탬프 적립' && styles.stampTodaySectionHeader,
             ]}
             activeOpacity={0.7}
             onPress={() => toggleSection(section.title)}
@@ -185,12 +214,14 @@ export default function AdminScreen() {
             <Text style={[
               styles.sectionTitle,
               section.title === '오늘 가입한 회원' && styles.todaySectionTitle,
+              section.title === '오늘 스탬프 적립' && styles.stampTodaySectionTitle,
             ]}>
               {section.title}
             </Text>
             <Text style={[
               styles.sectionCount,
               section.title === '오늘 가입한 회원' && styles.todaySectionCount,
+              section.title === '오늘 스탬프 적립' && styles.stampTodaySectionCount,
             ]}>
               ({section.data.length})
             </Text>
@@ -231,7 +262,7 @@ export default function AdminScreen() {
               </View>
               <View style={{ marginTop: 4, alignItems: 'flex-end' }}>
                 <Text style={styles.memberDob}>
-                {item.dob?.length === 8 ? `${item.dob.slice(2, 4)}-${item.dob.slice(4, 6)}-${item.dob.slice(6, 8)}` : item.dob}
+                  {item.dob?.length === 8 ? `${item.dob.slice(2, 4)}-${item.dob.slice(4, 6)}-${item.dob.slice(6, 8)}` : item.dob}
                 </Text>
                 <Text style={styles.memberCreatedAt}>가입: {item.createdAt?.split('T')[0].slice(2)}</Text>
               </View>
@@ -365,6 +396,15 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   todaySectionCount: {
+    color: '#fff',
+  },
+  stampTodaySectionHeader: {
+    backgroundColor: '#4CAF50', // 녹색 계열 (원하시면 다른 색으로 바꿔도 됩니다)
+  },
+  stampTodaySectionTitle: {
+    color: '#fff',
+  },
+  stampTodaySectionCount: {
     color: '#fff',
   },
 });
