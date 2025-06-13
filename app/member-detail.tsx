@@ -298,6 +298,18 @@ export default function MemberDetail() {
         </TouchableOpacity>
 
         <TouchableOpacity
+          style={[styles.button, { backgroundColor: '#8E44AD' }]}
+          onPress={() =>
+            router.push({
+              pathname: '/memo',
+              params: { uuid, name },
+            })
+          }
+        >
+          <Text style={styles.buttonText}>관리자 메모</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
           style={[styles.button, { backgroundColor: '#607D8B' }]}
           onPress={() => {
             router.push({

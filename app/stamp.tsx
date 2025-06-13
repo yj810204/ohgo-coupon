@@ -239,6 +239,17 @@ export default function StampScreen() {
 
 
       </ScrollView>
+      {/* 🎮 미니게임 접속 버튼 */}
+      {fromAdmin === 'true' && (
+        <TouchableOpacity
+          style={styles.floatingMiniGameButton}
+          onPress={() =>
+            router.push({ pathname: '/mini-games', params: { uuid, name, dob } })
+          }
+        >
+          <Ionicons name="game-controller-outline" size={50} color="#fff" />
+        </TouchableOpacity>
+      )}
 
       {fromAdmin !== 'true' && (
         <TouchableOpacity
@@ -384,7 +395,23 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 3 },
-  },  
+  },
+  floatingMiniGameButton: {
+    position: 'absolute',
+    bottom: Platform.OS === 'ios' ? 135 : 170, // QR 버튼 위에 위치
+    right: 25,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#333', // 검은 배경
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',

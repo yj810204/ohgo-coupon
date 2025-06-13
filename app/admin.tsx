@@ -46,6 +46,13 @@ export default function AdminScreen() {
     restoreCollapsedState();
   }, []);
 
+  // UTC ISO string → KST YYYY-MM-DD 변환
+  function toKSTDateStr(utcString: string): string {
+    const date = new Date(utcString);
+    date.setHours(date.getHours() + 9);
+    return date.toISOString().split('T')[0];
+  }
+
   const fetchMembers = async () => {
     const snapshot = await getDocs(collection(db, 'users'));
     const users = snapshot.docs.map(doc => ({
@@ -61,35 +68,39 @@ export default function AdminScreen() {
         const couponsRef = collection(db, `users/${user.uuid}/coupons`);
         const couponSnap = await getDocs(couponsRef);
         const activeCoupons = couponSnap.docs.filter(doc => !doc.data().used);
-
+    
         const stampsRef = collection(db, `users/${user.uuid}/stamps`);
         const stampSnap = await getDocs(stampsRef);
-        const validStamps = stampSnap.docs;
-
+    
+        const memoRef = collection(db, `users/${user.uuid}/memo`);
+        const memoSnap = await getDocs(memoRef);
+        const hasMemo = memoSnap.docs.some(doc => !doc.data().deleted); // 삭제 안된 메모 여부
+    
         return {
           ...user,
           couponCount: activeCoupons.length,
-          stampCount: validStamps.length,
+          stampCount: stampSnap.docs.length,
+          hasMemo, // ✅ 메모 존재 여부
         };
       })
     );
 
-    const today = new Date().toISOString().split('T')[0];
-
-    const joinedToday = usersWithStats.filter(user =>
-      user.createdAt?.startsWith(today)
-    );
-
+    // 오늘 날짜 (KST 기준, YYYY-MM-DD 형식)
     const todayKST = new Date();
-    todayKST.setHours(todayKST.getHours() + 9); // UTC → KST 변환
+    todayKST.setHours(todayKST.getHours() + 9);
     const todayDateStr = todayKST.toISOString().split('T')[0];
 
+    // 오늘 가입한 회원 (createdAt은 ISO 문자열)
+    const joinedToday = usersWithStats.filter(user =>
+      user.createdAt && toKSTDateStr(user.createdAt) === todayDateStr
+    );
+
+    // 오늘 스탬프 적립한 회원 (lastStampTime은 Timestamp)
     const stampedToday = usersWithStats.filter(user => {
       if (!user.lastStampTime?.seconds) return false;
 
       const kst = new Date(user.lastStampTime.seconds * 1000);
-      kst.setHours(kst.getHours() + 9); // UTC → KST 보정
-
+      kst.setHours(kst.getHours() + 9);
       const stampDate = kst.toISOString().split('T')[0];
       return stampDate === todayDateStr;
     });
@@ -246,7 +257,17 @@ export default function AdminScreen() {
               }
             >
               <View>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <Text style={styles.memberName}>{item.name}</Text>
+                {item.hasMemo && (
+                  <Ionicons
+                    name="chatbubble-ellipses-outline"
+                    size={16}
+                    color="#1e88e5"
+                    style={styles.memoIcon}
+                  />
+                )}
+              </View>
                 <View style={{ flexDirection: 'row', marginTop: 4 }}>
                   {item.stampCount > 0 && (
                     <View style={styles.stampBadge}>
@@ -264,7 +285,9 @@ export default function AdminScreen() {
                 <Text style={styles.memberDob}>
                   {item.dob?.length === 8 ? `${item.dob.slice(2, 4)}-${item.dob.slice(4, 6)}-${item.dob.slice(6, 8)}` : item.dob}
                 </Text>
-                <Text style={styles.memberCreatedAt}>가입: {item.createdAt?.split('T')[0].slice(2)}</Text>
+                <Text style={styles.memberCreatedAt}>
+                  가입: {toKSTDateStr(item.createdAt).slice(2)}
+                </Text>
               </View>
             </TouchableOpacity>
           );
@@ -406,5 +429,9 @@ const styles = StyleSheet.create({
   },
   stampTodaySectionCount: {
     color: '#fff',
+  },
+  memoIcon: {
+    marginLeft: 4,
+    marginBottom: 2
   },
 });
