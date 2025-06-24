@@ -95,7 +95,6 @@ export default function MemoScreen() {
           value={newMemo}
           onChangeText={setNewMemo}
           multiline
-          style={styles.input}
         />
         <TouchableOpacity style={styles.addBtn} onPress={handleAdd}>
           <Text style={styles.addText}>메모 추가</Text>

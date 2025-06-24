@@ -1,7 +1,7 @@
 // coupons.tsx
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { collection, deleteDoc, doc, getDoc, getDocs, Timestamp } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDoc, getDocs, Timestamp, updateDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import { Alert, FlatList, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { db } from '../firebase';
@@ -45,10 +45,22 @@ export default function CouponsScreen() {
   const [password, setPassword] = useState('');
   const [passwordModalVisible, setPasswordModalVisible] = useState(false);
 
+  type Coupon = {
+    id: string;
+    deleted?: boolean;
+    [key: string]: any; // Allow other properties
+  };
+
   const fetchCoupons = async () => {
     const ref = collection(db, `users/${uuid}/coupons`);
     const snapshot = await getDocs(ref);
-    const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    let list: Coupon[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  
+    // 일반 사용자 → 삭제된 것만 필터링
+    if (fromAdmin !== 'true') {
+      list = list.filter(c => !c.deleted); // ✅ used는 포함
+    }
+  
     setCoupons(list);
   };
 
@@ -186,7 +198,9 @@ export default function CouponsScreen() {
                       { text: '취소', style: 'cancel' },
                       {
                         text: '삭제', style: 'destructive', onPress: async () => {
-                          await deleteDoc(doc(db, `users/${uuid}/coupons`, item.id));
+                          await updateDoc(doc(db, `users/${uuid}/coupons`, item.id), {
+                            deleted: true,
+                          });
                           await fetchCoupons();
                         }
                       }
@@ -222,7 +236,7 @@ export default function CouponsScreen() {
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
                   <Text style={{ fontSize: 14, color: item.used ? '#999' : '#4CAF50', fontFamily: 'GiantRegular' }}>
                     {item.used
-                      ? `✅ ${formatUsedAt(item.usedAt)} 사용 (삭제가능)`
+                      ? `✅ ${formatUsedAt(item.usedAt)} 사용한 쿠폰`
                       : '🟢 사용 가능'}
                   </Text>
 

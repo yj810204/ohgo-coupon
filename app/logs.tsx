@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { db } from '../firebase';
-import { collection, getDocs, orderBy, query } from 'firebase/firestore';
+import { collection, getDocs, orderBy, query, deleteDoc } from 'firebase/firestore';
 import { format } from 'date-fns';
 
 export default function LogsScreen() {
@@ -36,10 +36,29 @@ export default function LogsScreen() {
     setRefreshing(false);
   };
 
-  const clearLogs = () => {
-    Alert.alert('기록 삭제', '해당 회원의 로그를 삭제하려면 Firestore 콘솔에서 직접 삭제해야 합니다.', [
-      { text: '확인', style: 'default' },
-    ]);
+  const clearLogs = async () => {
+    Alert.alert(
+      '로그 전체 삭제',
+      '정말로 이 회원의 모든 로그를 삭제하시겠습니까?',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '삭제',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const logRef = collection(db, `users/${uuid}/logs`);
+              const snap = await getDocs(logRef);
+              const batchDeletes = snap.docs.map(docSnap => deleteDoc(docSnap.ref));
+              await Promise.all(batchDeletes);
+              setLogs([]); // 리스트 비우기
+            } catch (e) {
+              Alert.alert('삭제 실패', '삭제 중 오류가 발생했습니다.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -49,7 +68,7 @@ export default function LogsScreen() {
         {logs.length > 0 && (
           <TouchableOpacity onPress={clearLogs} style={styles.clearButton}>
             <Ionicons name="alert-circle-outline" size={16} color="#e53935" />
-            <Text style={styles.clearButtonText}>삭제 안내</Text>
+            <Text style={styles.clearButtonText}>삭제</Text>
           </TouchableOpacity>
         )}
       </View>

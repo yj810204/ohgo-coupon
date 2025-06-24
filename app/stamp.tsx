@@ -244,7 +244,7 @@ export default function StampScreen() {
         <TouchableOpacity
           style={styles.floatingMiniGameButton}
           onPress={() =>
-            router.push({ pathname: '/mini-games', params: { uuid, name, dob } })
+            router.push({ pathname: '/mini-games/fishing', params: { uuid, name, dob } })
           }
         >
           <Ionicons name="game-controller-outline" size={50} color="#fff" />

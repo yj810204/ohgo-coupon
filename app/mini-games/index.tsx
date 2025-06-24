@@ -6,27 +6,11 @@ export default function MiniGameIndex() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>🎮 미니게임</Text>
-
       <TouchableOpacity
         style={styles.gameButton}
         onPress={() => router.push('/mini-games/fishing')}
       >
         <Text style={styles.gameText}>🎣 낚시 게임</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.gameButton}
-        onPress={() => router.push('/mini-games/roulette')}
-      >
-        <Text style={styles.gameText}>🎡 룰렛 게임</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.gameButton}
-        onPress={() => router.push('/mini-games/memory')}
-      >
-        <Text style={styles.gameText}>🧠 카드 뒤집기</Text>
       </TouchableOpacity>
     </View>
   );

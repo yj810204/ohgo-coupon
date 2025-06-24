@@ -9,7 +9,9 @@ import {
   query,
   updateDoc,
   where,
-  Timestamp
+  Timestamp,
+  orderBy,
+  QueryConstraint
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { sendPushToUser } from './send-push';
@@ -38,6 +40,23 @@ function getTodayRange(): { start: Timestamp; end: Timestamp } {
 /** YYYY-MM-DD 포맷으로 오늘 날짜 반환 */
 function getTodayDate(): string {
   return new Date().toISOString().split('T')[0];
+}
+
+export async function getStampHistory({
+  uuid,
+  startDate,
+  endDate,
+}: {
+  uuid: string;
+  startDate?: Date;
+  endDate?: Date;
+}) {
+  const conds: QueryConstraint[] = [orderBy('timestamp', 'desc')];
+  if (startDate) conds.push(where('timestamp', '>=', Timestamp.fromDate(startDate)));
+  if (endDate) conds.push(where('timestamp', '<=', Timestamp.fromDate(endDate)));
+  const q = query(collection(db, `users/${uuid}/stampHistory`), ...conds);
+  const snap = await getDocs(q);
+  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
 export async function issue50PercentCoupon(uuid: string): Promise<void> {
@@ -123,7 +142,17 @@ export async function addStamp(uuid: string, method: 'QR' | 'ADMIN' = 'QR'): Pro
     method,
     timestamp: new Date(),
   };
-  await addDoc(stampRef, stampData);
+
+  const stampDocRef = await addDoc(stampRef, stampData);
+  const historyRef = collection(db, `users/${uuid}/stampHistory`);
+  await addDoc(historyRef, {
+    action: 'add',
+    stampId: stampDocRef.id,
+    date: getTodayDate(),
+    method,
+    timestamp: Timestamp.now(),
+    message: `${method} 방식으로 스탬프 적립`,
+  });
 
   // ✅ 2. 사용자 정보에 마지막 적립 시간 업데이트
   await updateDoc(userRef, {
@@ -167,7 +196,16 @@ export async function addStampBatch(uuid: string, count: number): Promise<void> 
   }));
 
   for (const data of stampDataList) {
-    await addDoc(stampRef, data);
+    const stampDocRef = await addDoc(stampRef, data);
+    const historyRef = collection(db, `users/${uuid}/stampHistory`);
+    await addDoc(historyRef, {
+      action: 'add',
+      stampId: stampDocRef.id,
+      date: data.date,
+      method: data.method,
+      timestamp: Timestamp.now(),
+      message: `ADMIN 방식으로 스탬프 적립`,
+    });
   }
 
   await updateDoc(userRef, {
@@ -185,11 +223,23 @@ export async function addStampBatch(uuid: string, count: number): Promise<void> 
   const totalCount = allStamps.length;
   const fullCouponCount = Math.floor(totalCount / 10);
 
-  // ✅ 3. 쿠폰 발급 & 스탬프 삭제
+  // ✅ 3. 쿠폰 발급 & 스탬프 회수
   for (let i = 0; i < fullCouponCount; i++) {
     await issueCoupon(uuid);
     const toDelete = allStamps.splice(0, 10);
-    await Promise.all(toDelete.map(d => deleteDoc(d.ref)));
+
+    const historyRef = collection(db, `users/${uuid}/stampHistory`);
+    for (const d of toDelete) {
+      await addDoc(historyRef, {
+        action: 'remove',
+        stampId: d.id,
+        date: d.data().date,
+        method: d.data().method,
+        timestamp: Timestamp.now(),
+        message: '쿠폰 발급으로 스탬프 삭제',
+      });
+      await deleteDoc(d.ref);
+    }
   }
 
   if (fullCouponCount > 0) {
@@ -242,8 +292,17 @@ export async function issueCoupon(uuid: string): Promise<void> {
 /** 스탬프 모두 삭제 */
 export async function clearStamps(uuid: string): Promise<void> {
   const stampRef = collection(db, `users/${uuid}/stamps`);
+  const historyRef = collection(db, `users/${uuid}/stampHistory`);
   const snapshot = await getDocs(stampRef);
   for (const docSnap of snapshot.docs) {
+    await addDoc(historyRef, {
+      action: 'remove',
+      stampId: docSnap.id,
+      date: docSnap.data().date,
+      method: docSnap.data().method,
+      timestamp: Timestamp.now(),
+      message: '쿠폰 발급으로 스탬프 삭제',
+    });
     await deleteDoc(docSnap.ref);
   }
 
@@ -352,6 +411,16 @@ export async function deleteStamp(uuid: string, value: string, p0: string, p1: s
     if (data.method === method && sameTime) {
       console.log('🧹 삭제할 문서 ID:', doc.id);
       await deleteDoc(doc.ref);
+
+      const historyRef = collection(db, `users/${uuid}/stampHistory`);
+      await addDoc(historyRef, {
+        action: 'recall',
+        stampId: doc.id,
+        date,
+        method,
+        timestamp: Timestamp.now(),
+        message: `${date} ${time} ${method} 스탬프 관리자 회수`,
+      });
       
       // ✅ 푸시 알림 전송
       await sendPushToUser({

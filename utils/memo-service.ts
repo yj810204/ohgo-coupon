@@ -25,7 +25,7 @@ import {
     const q = query(collection(db, `users/${uuid}/memo`), orderBy('createdAt', 'desc'));
     const snap = await getDocs(q);
     return snap.docs
-      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .map(doc => ({ id: doc.id, ...(doc.data() as { content: string; createdAt: any; updatedAt: any; deleted: boolean }) }))
       .filter(m => !m.deleted);
   }
   

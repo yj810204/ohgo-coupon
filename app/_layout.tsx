@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'; // 설치 필요
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/firebase';
 import Constants from 'expo-constants';
+import { ActionSheetProvider } from '@expo/react-native-action-sheet'; 
 
 Notifications.addNotificationReceivedListener(async (notification) => {
   const title = notification.request.content.title || '';
@@ -192,61 +193,65 @@ export default function TabLayout() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <SafeAreaView style={styles.safeArea} edges={['top', 'bottom', 'left', 'right']}>
-        <Stack
-          key={`stack-${isAdmin}`}
-          screenOptions={({ route }) => ({
-            header: () => (
-              <CustomHeader
-                title={getTitle(route?.name)}
-                routeName={route.name}
-                isAdmin={isAdmin} // ✅ isAdmin 전달
-              />
-            ),
-          })}
-        >
-          <Stack.Screen name="index" />
-          <Stack.Screen name="login" />
-          <Stack.Screen name="stamp" />
-          <Stack.Screen name="coupons" />
-          <Stack.Screen name="qr-scan" />
-          <Stack.Screen name="admin" />
-          <Stack.Screen name="admin-push" />
-          <Stack.Screen name="member-detail" />
-          <Stack.Screen name="+not-found" />
-        </Stack>
-        <ExpoStatusBar style="auto" />
-      </SafeAreaView>
+      <ActionSheetProvider>
+        <SafeAreaView style={styles.safeArea} edges={['top', 'bottom', 'left', 'right']}>
+          <Stack
+            key={`stack-${isAdmin}`}
+            screenOptions={({ route }) => ({
+              header: () => (
+                <CustomHeader
+                  title={getTitle(route?.name)}
+                  routeName={route.name}
+                  isAdmin={isAdmin} // ✅ isAdmin 전달
+                />
+              ),
+            })}
+          >
+            <Stack.Screen name="index" />
+            
+            <Stack.Screen name="+not-found" />
+            <Stack.Screen name="admin-push" />
+            <Stack.Screen name="admin" />
+            <Stack.Screen name="boarding-form" />
+            <Stack.Screen name="coupons" />
+            
+            <Stack.Screen name="login" />
+            <Stack.Screen name="logs" />
+            <Stack.Screen name="member-detail" />
+            <Stack.Screen name="memo" />
+            <Stack.Screen name="notification-history" />
+            <Stack.Screen name="qr-scan" />
+            <Stack.Screen name="settings" />
+            <Stack.Screen name="stamp-history" />
+            <Stack.Screen name="stamp" />
+
+            <Stack.Screen name="mini-games/fishing" />
+          </Stack>
+          <ExpoStatusBar style="auto" />
+        </SafeAreaView>
+      </ActionSheetProvider>
     </ThemeProvider>
   );
   
-  function getTitle(routeName: string | undefined): string {
-    switch (routeName) {
-      case 'login':
-        return 'Oh-go Fishing';
-      case 'stamp':
-        return 'Stamps';
-      case 'coupons':
-        return 'Coupons';
-      case 'qr-scan':
-        return 'QR Scan';
-      case 'admin':
-        return 'Admin';
-      case 'member-detail':
-        return 'Admin';
-      case 'settings':
-        return 'Settings';
-      case 'logs':
-        return 'Logs';
-      case 'notification-history':
-        return 'History';
-      case 'boarding-form':
-        return 'Boarding';
-      case 'admin-push':
-        return 'Admin';
-      default:
-        return '';
-    }
+  function getTitle(routeName?: string): string {
+    const titles: Record<string, string> = {
+      'admin-push': 'Notification',
+      'admin': 'Admin',
+      'boarding-form': 'Boarding',
+      'coupons': 'Coupons',
+      'index': 'Oh-Go Fishing',
+      'login': 'Oh-Go Fishing',
+      'logs': 'Logs',
+      'member-detail': 'Detail',
+      'memo': 'Memo',
+      'notification-history': 'History',
+      'qr-scan': 'QR Scan',
+      'settings': 'Settings',
+      'stamp-history': 'History',
+      'stamp': 'Stamps',
+      'mini-games/fishing': 'Game',
+    };
+    return titles[routeName ?? ''] ?? '';
   }
   
   type CustomHeaderProps = {

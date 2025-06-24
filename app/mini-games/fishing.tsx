@@ -1,468 +1,843 @@
-// app/mini-games/fishing.tsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
-  Image,
-  StyleSheet,
-  Dimensions,
-  Alert,
-  Vibration,
+  Pressable,
   Animated,
   Easing,
+  Alert,
+  Dimensions,
+  StyleSheet,
+  TouchableOpacity,
 } from 'react-native';
-import { doc, getDoc } from 'firebase/firestore';
+import * as Haptics from 'expo-haptics';
+import { Vibration } from 'react-native';
+import { collection, getDocs, doc, getDoc, setDoc, addDoc, updateDoc, increment, runTransaction, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebase';
+import { useLocalSearchParams } from 'expo-router';
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
+type GameState = 'idle' | 'casting' | 'waiting' | 'bite' | 'reel' | 'result';
+const BITE_TIMEOUT = 2000;
+const INITIAL_DISTANCE = 10;
+const REEL_TIME_LIMIT = 13000; // ms (ex. 13초, 필요시 하드코딩/DB값)
 
-type CatchItem = {
-  name: string;
-  point: number;
-  level?: number;
-};
+function todayStr() {
+  const date = new Date();
+  date.setHours(date.getHours() + 9);
+  return date.toISOString().split('T')[0];
+}
 
 export default function FishingGame() {
-  const [caughtItem, setCaughtItem] = useState<CatchItem | null>(null);
-  const [baitCount, setBaitCount] = useState(10);
-  const [message, setMessage] = useState('🎣 탭해서 낚시 시작!');
-  const [catchOptions, setCatchOptions] = useState<CatchItem[]>([]);
-  const [gameState, setGameState] = useState<'idle' | 'waiting' | 'hit' | 'reeling' | 'result' | 'readyToReset'>('idle');
-  const [reelProgress, setReelProgress] = useState(0);
-  const [reelGoal, setReelGoal] = useState(100);
-  const [visibleBanner, setVisibleBanner] = useState('');
-  const [targetPosition, setTargetPosition] = useState(0.5);
-  const barPosition = useRef(new Animated.Value(0)).current;
-  const barValue = useRef(0);
-  const [reelStartTime, setReelStartTime] = useState<number | null>(null);
-  const bobberY = useRef(new Animated.Value(0)).current;
-  const [showBobber, setShowBobber] = useState(false);
-  const [now, setNow] = useState(Date.now());
-  const bobberFloatingAnim = useRef<Animated.CompositeAnimation | null>(null);
-  const bobberRotate = useRef(new Animated.Value(0)).current;
-  const bobberShakeX = useRef(new Animated.Value(0)).current;
+  const { uuid, name, dob } = useLocalSearchParams<{
+    uuid: string;
+    name: string;
+    dob: string;
+  }>();
 
-  const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null);
-  const reelTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // ... state 정의(동일, 위 코드 참고) ...
+  const [fishes, setFishes] = useState<any[]>([]); // 물고기 데이터
+  const [fishLoading, setFishLoading] = useState(true); // 물고기 데이터 로딩 상태
+  const [dailyBaitLimit, setDailyBaitLimit] = useState(5); // 하루 미끼 제한 개수
+  const [todayBaitUsed, setTodayBaitUsed] = useState(0); // 오늘 사용한 미끼 개수
 
-  const fishCount = 3;
-  const fishOpacities = useRef([...Array(fishCount)].map(() => new Animated.Value(0))).current;
-  const fishPositions = useRef([...Array(fishCount)].map(() => ({
-    x: new Animated.Value(0),
-    y: new Animated.Value(0),
-  }))).current;
+  const [state, setState] = useState<GameState>('idle'); // 게임 상태
+  const [baitCount, setBaitCount] = useState<number>(0); // 남은 미끼 개수
+  const [fish, setFish] = useState<any>(null); // 현재 잡은 물고기 정보
+  const [showResult, setShowResult] = useState(false); // 결과 화면 표시 여부
+  const [resultText, setResultText] = useState(''); // 결과 메시지
+  const [isSaving, setIsSaving] = useState(false); // 포인트 저장 중 여부
+  const [biteDuration, setBiteDuration] = useState(BITE_TIMEOUT); // 입질 타이머 지속 시간
+  const [gaugeSpeed, setGaugeSpeed] = useState(500); // ms, 기본값
+  const [totalPoint, setTotalPoint] = useState<number>(0); // 총 포인트 (사용자 정보에서 가져올 예정)
 
-  const startFishAnimation = () => {
-    fishPositions.forEach((pos, i) => {
-      Animated.parallel([
-        Animated.timing(fishOpacities[i], {
-          toValue: 1,
-          duration: 800,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pos.x, {
-          toValue: Math.random() * 40 - 20, // 찌 근처 x
-          duration: 2000 + Math.random() * 500,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pos.y, {
-          toValue: Math.random() * 20 - 10, // 찌 근처 y
-          duration: 2000 + Math.random() * 500,
-          useNativeDriver: true,
-        }),
-      ]).start(() => loopFish(i));
-    });
-  };
-  
-  const loopFish = (i: number) => {
-    const pos = fishPositions[i];
-    const animate = () => {
-      const tx = Math.random() * 40 - 20;
-      const ty = Math.random() * 30 - 15;
-  
-      Animated.parallel([
-        Animated.timing(pos.x, {
-          toValue: tx,
-          duration: 2000 + Math.random() * 2000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pos.y, {
-          toValue: ty,
-          duration: 2000 + Math.random() * 2000,
-          useNativeDriver: true,
-        }),
-      ]).start(() => animate());
-    };
-    animate();
-  };
+  // 애니메이션 및 타이머
+  const castAnim = useRef(new Animated.Value(0)).current; // 캐스팅 애니메이션
+  const gaugeAnim = useRef(new Animated.Value(0)).current; // 게이지 애니메이션
+  const biteTimeoutAnim = useRef(new Animated.Value(1)).current; // 입질 타이머 애니메이션
+  const gaugeMovingRef = useRef(false); // 게이지 움직임 상태
+  const biteTimer = useRef<any>(null); // 입질 타이머
+  const biteTimeout = useRef<any>(null); // 입질 타임아웃
+  const timeBarAnim = useRef(new Animated.Value(1)).current; // 릴링 시간 바 애니메이션
 
+  const [distance, setDistance] = useState(INITIAL_DISTANCE);
+  const [reelLimit, setReelLimit] = useState(REEL_TIME_LIMIT);
+  const [reelGauge, setReelGauge] = useState(0);
+  const reelInterval = useRef<any>(null);
+  const reelDangerTimeout = useRef<any>(null);
 
-  const rotateInterpolate = bobberRotate.interpolate({
-    inputRange: [-10, 0, 10],
-    outputRange: ['-10deg', '0deg', '10deg'],
+  const reelTimeout = useRef<any>(null); // 릴링 제한시간 타이머
+  const [gaugeZone, setGaugeZone] = useState<[number, number]>([0, 1]);
+  const [fishDistance, setFishDistance] = useState(INITIAL_DISTANCE);
+  const waitingHapticInterval = useRef<any>(null);
+
+  const [reelZones, setReelZones] = useState({
+    dangerZone: [0.85, 1],
+    greenZone: [0.7, 0.85],
+    normalZone: [0.5, 0.7],
   });
 
-  const shakeInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    if (!uuid) return;
+    const userRef = doc(db, 'users', uuid);
+    const unsub = onSnapshot(userRef, (snap) => {
+      setTotalPoint(Math.max(snap.data()?.totalPoint ?? 0, 0)); // 0점 미만 방어
+    });
+    return unsub;
+  }, [uuid]);
 
-  const startShaking = () => {
-    if (shakeInterval.current !== null) return;
-  
-    shakeInterval.current = setInterval(() => {
-      const randomX = Math.random() * 6 - 3; // -3 ~ +3 px
-      bobberShakeX.setValue(randomX);
-    }, 40);
-  };
+  // uuid 방어
+  useEffect(() => {
+    if (!uuid) return;
+    (async () => {
+      const baitSnap = await getDoc(doc(db, 'config', 'bait'));
+      setDailyBaitLimit(baitSnap.exists() ? (baitSnap.data().dailyLimit ?? 5) : 5);
 
-  const stopShaking = () => {
-    if (shakeInterval.current) {
-      clearInterval(shakeInterval.current);
-      shakeInterval.current = null;
-      bobberShakeX.setValue(0);
-    }
-  };
-  
+      try {
+        setFishLoading(true);
+        const snap = await getDocs(collection(db, 'fishes'));
+        const arr = snap.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data,
+            point: Number(data.point),
+            zone: Array.isArray(data.zone) ? data.zone.map(Number) : data.zone,
+          };
+        });
+        setFishes(arr);
+      } catch (e) {
+        console.error('Fish fetch error', e);
+        setFishes([]);
+      } finally {
+        setFishLoading(false);
+      }
+
+      // 오늘 사용 미끼
+      const usageSnap = await getDoc(doc(db, `users/${uuid}/baitUsage`, todayStr()));
+      setTodayBaitUsed(usageSnap.exists() ? (usageSnap.data().used || 0) : 0);
+    })();
+  }, [uuid]);
 
   useEffect(() => {
-    const fetchCatchOptions = async () => {
-      try {
-        const docSnap = await getDoc(doc(db, 'config', 'fishing'));
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          if (Array.isArray(data.items)) setCatchOptions(data.items);
-        }
-      } catch (e) {
-        console.error('🎣 데이터 불러오기 실패', e);
+    if (state === 'waiting') {
+      waitingHapticInterval.current = setInterval(() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      }, 1000);
+    } else {
+      if (waitingHapticInterval.current) {
+        clearInterval(waitingHapticInterval.current);
+        waitingHapticInterval.current = null;
+      }
+    }
+    // 언마운트 시 클린업도 필요
+    return () => {
+      if (waitingHapticInterval.current) {
+        clearInterval(waitingHapticInterval.current);
+        waitingHapticInterval.current = null;
       }
     };
-    fetchCatchOptions();
-  }, []);
+  }, [state]);
 
   useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 100);
-    return () => clearInterval(interval);
-  }, []);
+    setBaitCount(Math.max(0, dailyBaitLimit - todayBaitUsed));
+  }, [dailyBaitLimit, todayBaitUsed]);
 
   useEffect(() => {
-    const id = barPosition.addListener(({ value }) => {
-      barValue.current = value;
-    });
-    return () => barPosition.removeListener(id);
-  }, [barPosition]);
-
-  const animateBobber = (mode: 'soft' | 'intense') => {
-    if (bobberFloatingAnim.current) bobberFloatingAnim.current.stop();
-  
-    if (mode === 'intense') {
-      startShaking(); // 랜덤 떨림 시작
-    } else {
-      // 일반적인 잠방잠방 (부드러운 위아래 이동)
-      const anim = Animated.loop(
-        Animated.sequence([
-          Animated.timing(bobberY, {
-            toValue: 6,
-            duration: 500,
-            useNativeDriver: true,
-          }),
-          Animated.timing(bobberY, {
-            toValue: -6,
-            duration: 500,
-            useNativeDriver: true,
-          }),
-          Animated.timing(bobberY, {
-            toValue: 0,
-            duration: 300,
-            useNativeDriver: true,
-          }),
-        ])
-      );
-      bobberFloatingAnim.current = anim;
-      anim.start();
+    if (state === 'result' && fish && showResult) {
+      // 릴 성공 기준에 맞춰서 적립
+      if (reelGauge > 0.5 && !isSaving) {
+        savePointToUser();
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Vibration.vibrate(200);
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Vibration.vibrate(150);
+      }
     }
-  };
+  }, [state, showResult]);
+
+  useEffect(() => {
+    return () => {
+      [biteTimer, biteTimeout].forEach(t => {
+        if (t.current) clearTimeout(t.current);
+      });
+    };
+  }, []);
+
+  useEffect(() => {
+    if (state === 'result') setShowResult(true);
+  }, [state]);
+
+  async function savePointToUser() {
+    if (!uuid || !fish || isSaving) return;
+    // 릴게임 성공 기준: resultText === '' (즉, 실패 메시지가 없다면 성공)
+    if (!fish.point || resultText !== '') return;
+  
+    setIsSaving(true);
+    try {
+      // 1. 포인트 이력 기록
+      await addDoc(collection(db, `users/${uuid}/points`), {
+        fishName: fish.name,
+        point: fish.point,
+        at: new Date(),
+      });
+  
+      // 2. totalPoint 음수 방지 트랜잭션
+      const userRef = doc(db, 'users', uuid);
+      await runTransaction(db, async (transaction) => {
+        const userSnap = await transaction.get(userRef);
+        let current = (userSnap.data()?.totalPoint ?? 0) as number;
+        let next = current + fish.point;
+        if (next < 0) next = 0;
+        transaction.update(userRef, { totalPoint: next });
+      });
+    } catch (e) {
+      console.error('savePointToUser error:', e);
+    }
+    setIsSaving(false);
+  }
   
 
-  const throwBobberOnce = useRef(false);
-
-  const throwBobber = (onComplete: () => void) => {
-    if (throwBobberOnce.current) return;
-    throwBobberOnce.current = true;
-  
-    // 애니메이션 없이 즉시 찌를 착수 위치로 설정
-    bobberY.setValue(height / 2);   // 바로 착수 위치
-    onComplete();                   // 착수 후 콜백 실행
-  };
-
-  const startFishing = () => {
-    startFishAnimation(); // ✅ 물고기 등장 시작
-    
-    if (baitCount <= 0) {
-      Alert.alert('미끼 없음', '더 이상 낚시할 수 없습니다.');
+  async function startFishing() {
+    if (!uuid) {
+      Alert.alert('오류', '회원 정보가 없습니다.');
       return;
     }
+    if (baitCount <= 0) {
+      Alert.alert('미끼가 부족합니다', '오늘은 더이상 낚시할 수 없습니다!');
+      return;
+    }
+    if (fishes.length === 0) {
+      Alert.alert('물고기 데이터가 없습니다!');
+      return;
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
-    stopShaking(); // ✅ 시작 시 떨림 초기화!
+    try {
+      const usageRef = doc(db, `users/${uuid}/baitUsage`, todayStr());
+      await setDoc(usageRef, { used: increment(1), date: todayStr() }, { merge: true });
+      setTodayBaitUsed(u => u + 1);
+    } catch {}
 
-    throwBobberOnce.current = false;
-    setBaitCount(prev => prev - 1);
-    setMessage('입질을 기다리는 중...');
-    setShowBobber(true);
-    setGameState('waiting');
-    throwBobber(() => animateBobber('soft'));
+    [biteTimer, biteTimeout, reelTimeout, reelDangerTimeout].forEach(t => {
+      if (t.current) clearTimeout(t.current);
+    });
+    if (reelInterval.current) clearInterval(reelInterval.current);
 
-    const delay = 1000 + Math.random() * 2000;
-    setTimeout(() => {
-      setGameState('hit');
-      setVisibleBanner('🎯 타이밍을 맞춰 챔질!');
-      Vibration.vibrate(500);
-      setTargetPosition(Math.random());
-      animateBobber('intense');
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(barPosition, { toValue: 1, duration: 800, useNativeDriver: false }),
-          Animated.timing(barPosition, { toValue: 0, duration: 800, useNativeDriver: false }),
-        ])
-      ).start();
-    }, delay);
-  };
+    setResultText('');
+    setState('casting');
+    Animated.timing(castAnim, {
+      toValue: 1,
+      duration: 800,
+      useNativeDriver: true,
+      easing: Easing.out(Easing.quad),
+    }).start(() => {
+      setState('waiting');
+      castAnim.setValue(0);
+      const delay = 2000 + Math.random() * 2000;
+      biteTimer.current = setTimeout(() => setState('bite'), delay);
+    });
+    const randomFish = fishes[Math.floor(Math.random() * fishes.length)];
+    setFish(randomFish);
+    setDistance(randomFish.distance || INITIAL_DISTANCE);
+    setReelLimit(randomFish.limitTime || REEL_TIME_LIMIT);
+    setFishDistance(randomFish.distance || INITIAL_DISTANCE);
+    setShowResult(false);
+  }
 
-  const startReeling = () => {
-    const item = catchOptions[Math.floor(Math.random() * catchOptions.length)];
-    const level = item.level ?? 100;
-    setCaughtItem(item);
-    setReelGoal(level);
-    setReelProgress(0);
-    setGameState('reeling');
-    setVisibleBanner('🎣 무언가를 끌어올리는 중...');
-    setReelStartTime(Date.now());
+  function onWaitingTouch() {
+    if (state !== 'waiting') return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    Vibration.vibrate(150);
+    [biteTimer, biteTimeout].forEach(t => {
+      if (t.current) clearTimeout(t.current);
+    });
+    setResultText('입질 전에 터치하면\n물고기가 도망가요!');
+    setState('result');
+  }
 
-    reelTimeout.current = setTimeout(() => {
-      setVisibleBanner('⌛ 시간 초과! 무언가를 놓쳤어요ㅠ');
-      if (progressInterval.current) clearInterval(progressInterval.current);
-      setGameState('result');
-    }, 20000);
+  function onBiteEnter() {
+    // zone width: 0.22~0.34 사이 랜덤, start: 0.08~0.68 내
+    const zoneWidth = 0.22 + Math.random() * 0.12; // 더 넓게
+    const zoneStart = 0.08 + Math.random() * (0.68 - zoneWidth); // 좌우에 여유 확보
+    setGaugeZone([zoneStart, zoneStart + zoneWidth]);
 
-    progressInterval.current = setInterval(() => {
-      setReelProgress(prev => Math.max(0, prev - 8));
-    }, 200);
-  };
+    // 게이지 왕복 속도 (0.3~1.2초 랜덤, 한 번만 선택)
+    const gaugeDuration = Math.round(300 + Math.random() * 900);
+    setGaugeSpeed(gaugeDuration);
+  
+    // 게이지 시작
+    gaugeMovingRef.current = true;
+    startGaugeLoop(1, gaugeDuration);
+  
+    // 제한시간 2~4초 랜덤 (2000~4000ms)
+    const duration = Math.round(2000 + Math.random() * 2000);
+    setBiteDuration(duration);
+  
+    biteTimeoutAnim.setValue(1);
+    Animated.timing(biteTimeoutAnim, {
+      toValue: 0,
+      duration: duration,
+      useNativeDriver: false,
+      easing: Easing.linear,
+    }).start();
+    biteTimeout.current = setTimeout(() => {
+      gaugeMovingRef.current = false;
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Vibration.vibrate(150);
+      setResultText('챔질 실패!\n물고기가 도망갔습니다.');
+      setState('result');
+    }, duration);
+  }
 
-  const handleTouch = () => {
-    if (gameState === 'idle') {
-      startFishing();
-    } else if (gameState === 'hit') {
-      const distance = Math.abs(targetPosition - barValue.current);
-      Vibration.vibrate(300); // ✅ 챔질 시 진동 추가
-      if (distance < 0.1) {
-        setVisibleBanner('🎣 히트 성공!');
-        Animated.timing(barPosition, {
-          toValue: barValue.current,
-          duration: 0,
-          useNativeDriver: false,
-        }).stop();
-        startReeling();
-      } else {
-        setMessage('💨 놓쳤어요...');
-        setVisibleBanner('😢 챔질 타이밍이 어긋났습니다');
+  function onTimingGaugePress() {
+    if (!gaugeMovingRef.current) return;
+    gaugeMovingRef.current = false;
+    if (biteTimeout.current) clearTimeout(biteTimeout.current);
+  
+    // 현재 애니메이션 값 즉시 획득
+    const val = (gaugeAnim as any).__getValue();
+    const zone = gaugeZone;
+    if (!zone || !Array.isArray(zone) || zone.length !== 2) return;
+    if (val >= zone[0] && val <= zone[1]) {
+      setResultText('');
+      setTimeout(() => setState('reel'), 30);
+    } else {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Vibration.vibrate(150);
+      setResultText('챔질 실패!\n물고기가 도망갔습니다.');
+      setTimeout(() => setState('result'), 30);
+    }
+  }
+  
 
-        // 🔥 물고기들 바깥으로 이동 + fade out
-        fishPositions.forEach((pos, i) => {
-          Animated.parallel([
-            Animated.timing(fishOpacities[i], {
-              toValue: 0,
-              duration: 800,
-              useNativeDriver: true,
-            }),
-            Animated.timing(pos.x, {
-              toValue: Math.random() > 0.5 ? 150 : -150,
-              duration: 1000,
-              useNativeDriver: true,
-            }),
-            Animated.timing(pos.y, {
-              toValue: 80 + Math.random() * 40,
-              duration: 1000,
-              useNativeDriver: true,
-            }),
-          ]).start();
-        });
+  function updateDistanceByGauge(gaugeValue: number, isPress = false) {
+    // reelZones에서 가져오기
+    if (!reelZones) return;
+    const { normalZone, greenZone, dangerZone } = reelZones;
+  
+    let decrease = 0;
+  
+    if (gaugeValue >= greenZone[0] && gaugeValue <= greenZone[1]) {
+      // 그린존
+      decrease = 0.04;
+    } else if (gaugeValue >= dangerZone[0] && gaugeValue <= dangerZone[1]) {
+      // 위험존
+      decrease = 0.12;
+    } else if (gaugeValue >= normalZone[0] && gaugeValue < normalZone[1]) {
+      // 노말존
+      decrease = 0.01;
+    }
+    // 0~0.5 구간은 감소 없음
+  
+    if (decrease > 0) {
+      setDistance(d => Math.max(0, d - decrease));
+    }
+  }
+  
+  
 
-        animateBobber('soft');
-        stopShaking();
-        setGameState('result');
-      }
-    } else if (gameState === 'reeling') {
-      setReelProgress(prev => {
-        const next = prev + 10;
-        if (next >= reelGoal) {
-          if (progressInterval.current) clearInterval(progressInterval.current);
-          if (reelTimeout.current) clearTimeout(reelTimeout.current);
-          setVisibleBanner(`🎉 ${caughtItem?.name} 획득! ${caughtItem?.point}점`);
-          setGameState('result');
-          setTimeout(() => {
-            setGameState('readyToReset');
-          }, 1500);
+  function startReelGame() {
+    // 1. 랜덤 zone 생성
+    const dzStart = 0.80 + Math.random() * 0.15;
+    const dzEnd = 1.0;
+    const greenWidth = 0.08 + Math.random() * 0.12;
+    const greenStart = Math.max(0.5, dzStart - greenWidth);
+    const greenEnd = dzStart;
+    const normalStart = 0.5;
+    const normalEnd = greenStart;
+  
+    setReelZones({
+      dangerZone: [dzStart, dzEnd],
+      greenZone: [greenStart, greenEnd],
+      normalZone: [normalStart, normalEnd],
+    });
+  
+    // 2. 릴게이지 초기값 = greenZone 중간
+    setReelGauge((greenStart + greenEnd) / 2);
+  
+    // 3. 남은 시간 애니메이션
+    timeBarAnim.setValue(1);
+    Animated.timing(timeBarAnim, {
+      toValue: 0,
+      duration: reelLimit,
+      useNativeDriver: false,
+      easing: Easing.linear,
+    }).start();
+  
+    // 4. 게이지 자동감소
+    reelInterval.current = setInterval(() => {
+      setReelGauge(prev => {
+        let next = Math.max(0, prev - 0.009);
+        updateDistanceByGauge(next); // ↓ 여기도 아래처럼 reelZones 써야 함
+        if (state !== 'reel') return prev;
+        if (next <= 0) {
+          setResultText('릴링이 너무 약해요!');
+          setState('result');
         }
         return next;
       });
-    } else if (gameState === 'readyToReset') {
-      resetGame();
+    }, 24);
+  
+    // 5. 제한시간 타이머
+    if (reelTimeout.current) clearTimeout(reelTimeout.current);
+    reelTimeout.current = setTimeout(() => {
+      setResultText('제한시간 초과! 물고기를 놓쳤습니다.');
+      setState('result');
+    }, reelLimit);
+  }
+  
+
+  // reel 진입할 때 단 한 번만 distance, 게이지 등 초기화
+  useEffect(() => {
+    if (state === 'reel') {
+      if (!fish) return;
+      if (reelInterval.current) clearInterval(reelInterval.current); // 혹시 몰라 추가
+      if (reelTimeout.current) clearTimeout(reelTimeout.current);
+      setDistance(fish.distance || INITIAL_DISTANCE);
+      setReelGauge(0.7); // 예시값
+      setResultText('');
+      startReelGame();
     }
-  };
+  }, [state, fish]);
 
-  const resetGame = () => {
-    setCaughtItem(null);
-    setReelProgress(0);
-    setReelGoal(100);
-    setGameState('idle');
-    setVisibleBanner('');
-    setMessage('🎣 탭해서 낚시 시작!');
-    bobberFloatingAnim.current?.stop(); // 추가
-    setShowBobber(false); // 추가
+  useEffect(() => {
+    if (state === 'reel' && distance <= 0) {
+      console.log('릴 바로 성공/실패?', distance, state);
+      if (reelTimeout.current) clearTimeout(reelTimeout.current); // 성공시 타이머 해제
+      setResultText('');
+      setState('result');
+    }
+  }, [distance, state]);
+  
+  useEffect(() => {
+    if (state !== 'reel' || !fish) return;
+    const dz = fish.dangerZone
+      ? Array.isArray(fish.dangerZone)
+        ? fish.dangerZone
+        : [fish.dangerZone, 1]
+      : [0.85, 1];
+  
+    // 위험존에 들어온 경우
+    if (reelGauge >= dz[0] && reelGauge <= dz[1]) {
+      // 이미 타이머 돌고 있으면 아무것도 안함
+      if (!reelDangerTimeout.current) {
+        reelDangerTimeout.current = setTimeout(() => {
+          // 0.3초 이후에 추가 랜덤 시간(0~1초) 후 터짐 체크
+          const randomDelay = Math.random() * 1000; // 0~1초 추가
+          reelDangerTimeout.current = setTimeout(() => {
+            setResultText('앗! 줄이 터졌다!\n릴링이 너무 강했어요!');
+            setState('result');
+          }, randomDelay);
+        }, 300);
+      }
+    } else {
+      // 위험존 벗어나면 타이머 취소
+      if (reelDangerTimeout.current) {
+        clearTimeout(reelDangerTimeout.current);
+        reelDangerTimeout.current = null;
+      }
+    }
+  }, [reelGauge, state, fish]);
+  
+  useEffect(() => {
+    if (state === 'result' || state === 'idle') {
+      if (reelInterval.current) clearInterval(reelInterval.current);
+      if (reelDangerTimeout.current) clearTimeout(reelDangerTimeout.current);
+      if (reelTimeout.current) clearTimeout(reelTimeout.current); // 추가
+    }
+  }, [state]);
 
-    fishOpacities.forEach(o => o.setValue(0));
-    fishPositions.forEach((pos, i) => {
-      pos.x.setValue((i % 2 === 0 ? -1 : 1) * (width / 2 + 100)); // 왼쪽 or 오른쪽 바깥
-      pos.y.setValue(60 + Math.random() * 30); // 찌보다 아래
+  useEffect(() => {
+    if (state === 'bite') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      onBiteEnter();
+    }
+    else if (state === 'result') {
+      if (biteTimeout.current) clearTimeout(biteTimeout.current);
+      biteTimeoutAnim.setValue(1);
+    }
+  }, [state]);
+  function startGaugeLoop(direction: 1 | -1, duration: number) {
+    gaugeAnim.setValue(direction === 1 ? 0 : 1);
+  
+    Animated.timing(gaugeAnim, {
+      toValue: direction === 1 ? 1 : 0,
+      duration: duration,
+      useNativeDriver: false,
+      easing: Easing.linear,
+    }).start(({ finished }) => {
+      if (!gaugeMovingRef.current) return;
+      startGaugeLoop(-direction as 1 | -1, duration); // 동일 duration 유지!
     });
-  };
+  }
+
+  function resetGame() {
+    [biteTimer, biteTimeout, reelTimeout, reelDangerTimeout].forEach(t => {
+      if (t.current) clearTimeout(t.current);
+    });
+    if (reelInterval.current) clearInterval(reelInterval.current);
+    gaugeMovingRef.current = false;
+    setState('idle');
+    setShowResult(false);
+    setFish(null);
+    setResultText('');
+    setDistance(INITIAL_DISTANCE);
+  }
+
+  // --- UI(리턴 부분) ---
+  if (!uuid) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>회원 정보가 없습니다.</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
-      <Image source={require('../../assets/fishing/bg.png')} style={styles.background} />
-      <Text style={styles.baitText}>🎣 미끼: {baitCount}개</Text>
-      <TouchableOpacity
-        style={styles.gameArea}
-        onPress={gameState === 'result' || gameState === 'readyToReset' ? undefined : handleTouch}
-      />
-      <Text style={styles.message}>{message}</Text>
+      <View style={{ marginVertical: 10, alignItems: 'center' }}>
+      <Text style={{ fontSize: 18, color: '#111', fontWeight: 'bold' }}>
+        내 총 포인트: {totalPoint}P
+      </Text>
+    </View>
 
-      {visibleBanner !== '' && (
-        <View style={styles.banner}>
-          <Text style={styles.bannerText}>{visibleBanner}</Text>
+      {(fishLoading || fishes.length === 0) && (
+        <View style={{alignItems:'center', justifyContent:'center', flex:1}}>
+          <Text style={{fontSize:22, color:'#888'}}>데이터를 불러오는 중...</Text>
         </View>
       )}
 
-      {showBobber && (
-        <Animated.Image
-        source={require('../../assets/fishing/bobber.png')}
-        style={[
-          styles.bobber,
-          {
-            transform: [
-              { translateY: bobberY },
-              { translateX: bobberShakeX }, // 랜덤 떨림 적용
-            ],
-          },
-        ]}
-      />
-      
-      )}
+      {(!fishLoading && fishes.length > 0) && (
+        <>
+          {state === 'idle' && (
+            <View style={{ alignItems: 'center' }}>
+              <Text style={styles.title}>🎣 낚시 미니게임</Text>
+              <Text style={styles.bait}>오늘 남은 미끼: {baitCount}개 / 하루 제한: {dailyBaitLimit}개</Text>
+              <TouchableOpacity
+                style={[styles.button, baitCount <= 0 && { backgroundColor: '#888' }]}
+                disabled={baitCount <= 0}
+                onPress={startFishing}
+              >
+                <Text style={styles.btnText}>낚시 시작</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
-      {showBobber &&
-        fishPositions.map((pos, i) => (
-          <Animated.Image
-            key={`fish-${i}`}
-            source={require('../../assets/fishing/fish-shadow.png')}
-            style={{
-              position: 'absolute',
-              top: height / 2 + 40,
-              left: width / 2 - 32, // 중심 기준
-              width: 64,
-              height: 32,
-              opacity: fishOpacities[i],
-              transform: [
-                { translateX: pos.x },
-                { translateY: pos.y },
-              ],
-              zIndex: 5,
-            }}
-          />
-        ))}
+          {state === 'casting' && (
+            <View style={styles.castingBox}>
+              <View style={styles.sea} />
+              <Animated.View
+                style={[
+                  styles.baitShape,
+                  {
+                    transform: [
+                      {
+                        translateY: castAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0, 250],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
+              >
+                <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: '#fa8', borderWidth: 2, borderColor: '#fff' }} />
+              </Animated.View>
+            </View>
+          )}
 
-      {gameState === 'hit' && (
-        <View style={styles.gaugeBox}>
-          <View style={styles.gaugeTrack}>
-            <View style={[styles.gaugeTarget, { left: `${targetPosition * 100}%` }]} />
-            <Animated.View style={[styles.gaugePointer, { left: barPosition.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }) }]} />
-          </View>
-        </View>
-      )}
+          {state === 'waiting' && (
+            <Pressable
+              style={{ flex: 1, width: '100%', justifyContent: 'center', alignItems: 'center' }}
+              onPress={onWaitingTouch}
+            >
+              <Text style={styles.title}>🎣 낚시 미니게임</Text>
+              <View style={{ marginVertical: 20, alignItems: 'center' }}>
+                <Text style={styles.info}>캐스팅!</Text>
+                <Text style={styles.info}>입질을 기다리는 중...(터치 금지!)</Text>
+              </View>
+              <View style={{
+                marginTop: 20,
+                width: 120,
+                height: 40,
+                backgroundColor: '#b2e3fa',
+                borderRadius: 20,
+                opacity: 0.6,
+              }} />
+            </Pressable>
+          )}
 
-      {gameState === 'reeling' && (
-        <View style={styles.reelBox}>
-          <View style={styles.progressBar}>
-            <View style={[styles.progress, { width: `${(reelProgress / reelGoal) * 100}%` }]} />
-          </View>
-          <View style={styles.reelTimerBar}>
-            <View style={[
-              styles.reelTimerProgress,
-              {
-                width: `${Math.max(0, 1 - ((now - (reelStartTime ?? now)) / 20000)) * 100}%`
-              }
-            ]} />
-          </View>
-          <Text style={styles.reelText}>{reelProgress} / {reelGoal}</Text>
-        </View>
-      )}
+          {state === 'bite' && (
+            <Pressable style={styles.gaugeBox} onPress={onTimingGaugePress}>
+              <Text style={styles.gaugeTitle}>⏳ 타이밍에 맞춰 터치!(후킹)</Text>
+              <View style={styles.gaugeTrack}>
+                <View style={[
+                  styles.gaugeSuccessZone,
+                  {
+                    left: `${gaugeZone[0] * 100}%`,
+                    width: `${(gaugeZone[1] - gaugeZone[0]) * 100}%`
+                  }
+                ]} />
+                <Animated.View
+                  style={[
+                    styles.gaugePointer,
+                    {
+                      left: gaugeAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: ['0%', '100%'],
+                      }),
+                    },
+                  ]}
+                />
+              </View>
+              <Text style={styles.info}>그린존에 위치시키면 후킹 성공!</Text>
+            </Pressable>
+          )}
 
-      {(gameState === 'result' || gameState === 'readyToReset') && (
-        <TouchableOpacity onPress={resetGame} style={styles.resetButton}>
-          <Text style={styles.resetButtonText}>🔄 다시 도전!</Text>
-        </TouchableOpacity>
+          {state === 'reel' && fish && (
+            (() => {
+              const { dangerZone, greenZone, normalZone } = reelZones;
+
+              return (
+                <Pressable
+                  style={styles.gaugeBox}
+                  onPress={() => {
+                    setReelGauge(prev => {
+                      let next = Math.min(1, prev + 0.045); // 연타마다만 올라감
+                      updateDistanceByGauge(next, true);    // 연타로 거리감소, 위험존 터짐 체크
+                      if (next <= 0) {
+                        setResultText('게이지가 0이 되어 놓쳤습니다!');
+                        setState('result');
+                      }
+                      return next;
+                    });
+                  }}
+                >
+                  <Text style={styles.gaugeTitle}>무언가를 끌어 올리는중!</Text>
+                  <View style={styles.gaugeTrack}>
+                    {/* 노말존 */}
+                    <View
+                      style={[
+                        styles.gaugeNormalZone,
+                        {
+                          left: `${normalZone[0] * 100}%`,
+                          width: `${(normalZone[1] - normalZone[0]) * 100}%`
+                        },
+                      ]}
+                    />
+                    {/* 그린존 */}
+                    <View
+                      style={[
+                        styles.gaugeGreenZone,
+                        {
+                          left: `${greenZone[0] * 100}%`,
+                          width: `${(greenZone[1] - greenZone[0]) * 100}%`
+                        },
+                      ]}
+                    />
+                    {/* 위험존 */}
+                    <View
+                      style={[
+                        styles.gaugeDangerZone,
+                        {
+                          left: `${dangerZone[0] * 100}%`,
+                          width: `${(dangerZone[1] - dangerZone[0]) * 100}%`
+                        },
+                      ]}
+                    />
+                    {/* 게이지 */}
+                    <View
+                      style={[
+                        styles.gaugePointer,
+                        { width: `${reelGauge * 100}%` }
+                      ]}
+                    />
+                  </View>
+                  {/* 남은 시간 표시 바 */}
+                  <View style={styles.timeBarTrack}>
+                    <Animated.View
+                      style={[
+                        styles.timeBarFill,
+                        {
+                          width: timeBarAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: ['0%', '100%'],
+                          }),
+                        }
+                      ]}
+                    />
+                  </View>
+
+                  {/* 남은 거리 bar */}
+                  <View style={styles.distanceBarTrack}>
+                    <View
+                      style={[
+                        styles.distanceBar,
+                        { width: `${Math.max(0, Math.min(1, distance / fishDistance)) * 100}%` }
+                      ]}
+                    />
+                  </View>
+
+                  <Text style={styles.trialInfo}>
+                    남은 거리: {distance.toFixed(2)}m | 게이지: {(reelGauge * 100).toFixed(0)}%
+                  </Text>
+                  <Text style={styles.info}>
+                    그린존, 파이팅존에 게이지를 두고 있으면 거리가 줄어듭니다! 레드존에 들어가면 줄이 터질 수 있어요!!
+                  </Text>
+                </Pressable>
+              );
+            })()
+          )}
+
+
+
+          {state === 'result' && fish && showResult && (
+            <View style={styles.resultBox}>
+              {resultText ? (
+                <Text style={styles.resultTitle}>{resultText}</Text>
+              ) : (
+                <>
+                  <Text style={styles.resultTitle}>{reelGauge > 0.5 ? '성공!' : '실패...'}</Text>
+                  {reelGauge > 0.5 && (
+                    <>
+                      <Text style={styles.resultDesc}>🎣 {fish.name}을(를) 잡았다!</Text>
+                      <Text style={styles.resultDesc}>{fish.point}점 획득!</Text>
+                    </>
+                  )}
+                </>
+              )}
+              <TouchableOpacity style={styles.button} onPress={resetGame}>
+                <Text style={styles.btnText}>다시하기</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </>
       )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  bobber: {
-    position: 'absolute',
-    top: height / 2, // 착수 위치를 고정
-    left: width / 2 - 24,
-    width: 48,
-    height: 48,
-    zIndex: 10,
+  container: { flex: 1, backgroundColor: '#e5f4fd', alignItems: 'center', justifyContent: 'center' },
+  title: { fontSize: 28, fontWeight: 'bold', marginBottom: 16, color: '#008cff' },
+  bait: { fontSize: 16, color: '#0a0a0a', marginBottom: 20 },
+  button: {
+    backgroundColor: '#34aaff',
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 16,
+    marginTop: 16,
+    marginBottom: 6,
   },
-    resetButton: {
-      position: 'absolute',
-      bottom: 160,
-      alignSelf: 'center',
-      backgroundColor: '#2196F3',
-      paddingVertical: 10,
-      paddingHorizontal: 20,
-      borderRadius: 8,
-    },
-    resetButtonText: {
-      color: '#fff',
-      fontSize: 16,
-      fontWeight: 'bold',
-    },
-    container: { flex: 1, backgroundColor: '#000' },
-    background: { position: 'absolute', width: '100%', height: '100%', resizeMode: 'cover' },
-    gameArea: { flex: 1 },
-    baitText: { position: 'absolute', top: 40, left: 20, color: '#fff', fontSize: 18 },
-    message: { position: 'absolute', bottom: 30, width: '100%', textAlign: 'center', color: '#fff', fontSize: 18 },
-    banner: { position: 'absolute', top: height / 2 - 60, alignSelf: 'center', backgroundColor: 'rgba(255,255,255,0.8)', padding: 12, borderRadius: 8 },
-    bannerText: { fontSize: 18, color: '#000', fontWeight: 'bold' },
-    reelBox: { position: 'absolute', bottom: 100, alignSelf: 'center', alignItems: 'center' },
-    progressBar: { height: 20, width: width * 0.8, backgroundColor: '#ccc', borderRadius: 10, overflow: 'hidden', marginBottom: 4 },
-    progress: { height: '100%', backgroundColor: '#4caf50' },
-    reelTimerBar: {
-      height: 4,
-      width: width * 0.8,
-      backgroundColor: '#400',
-      borderRadius: 2,
-      overflow: 'hidden',
-      marginBottom: 8,
-    },
-    reelTimerProgress: {
-      height: '100%',
-      backgroundColor: 'red',
-    },
-    reelText: { color: '#fff', fontSize: 16 },
-    gaugeBox: { position: 'absolute', bottom: 160, width: width * 0.8, height: 40, backgroundColor: '#111', alignSelf: 'center', justifyContent: 'center' },
-    gaugeTrack: { position: 'relative', width: '100%', height: 8, backgroundColor: '#555', borderRadius: 4 },
-    gaugeTarget: { position: 'absolute', top: -6, width: 10, height: 20, backgroundColor: 'red', borderRadius: 5 },
-    gaugePointer: { position: 'absolute', top: -6, width: 10, height: 20, backgroundColor: 'yellow', borderRadius: 5 },
-  });
-  
+  btnText: { color: '#fff', fontWeight: 'bold', fontSize: 18 },
+  castingBox: { flex: 1, alignItems: 'center', justifyContent: 'flex-start', width: '100%' },
+  sea: { width: width, height: 200, backgroundColor: '#3cc0fa', position: 'absolute', bottom: 0, left: 0 },
+  baitShape: { position: 'absolute', left: width / 2 - 12, top: 50, zIndex: 10 },
+  info: { fontSize: 20, color: '#222', marginVertical: 4 },
+  biteText: { fontSize: 28, color: '#ff621f', fontWeight: 'bold' },
+  fullScreenCenter: { flex: 1, justifyContent: 'center', alignItems: 'center', width: '100%' },
+  gaugeBox: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
+    paddingTop: 60,
+    backgroundColor: 'rgba(255,255,255,0.94)',
+  },
+  gaugeTitle: { fontSize: 26, fontWeight: 'bold', marginBottom: 16, color: '#008cff' },
+  gaugeTrack: {
+    width: width * 0.8,
+    height: 30,
+    backgroundColor: '#eee',
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 16,
+    justifyContent: 'center',
+  },
+  // styles
+  gaugeNormalZone: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(30,200,80,0.18)', // 선명한 그린
+    zIndex: 1,
+  },
+  gaugeGreenZone: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(255,200,100,0.35)', // 연한 주황
+    zIndex: 2,
+  },
+  gaugeDangerZone: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(255,0,0,0.14)',
+    zIndex: 3,
+  },
+  gaugeSuccessZone: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,220,40,0.3)',
+    borderRadius: 12,
+  },
+  gaugePointer: {
+    position: 'absolute',
+    top: 0,
+    width: 12,
+    height: 30,
+    backgroundColor: '#ff621f',
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: '#fff',
+  },
+  trialInfo: { fontSize: 17, color: '#666', marginTop: 4 },
+  timeoutTrack: {
+    marginTop: 16,
+    width: width * 0.8,
+    height: 10,
+    backgroundColor: '#e0e0e0',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  timeoutBar: {
+    height: 10,
+    backgroundColor: '#ffa930',
+    borderRadius: 12,
+  },
+  resultBox: { alignItems: 'center', justifyContent: 'center', padding: 20 },
+  resultTitle: { fontSize: 32, fontWeight: 'bold', marginBottom: 16, color: '#008cff', textAlign: 'center' },
+  resultDesc: { fontSize: 18, color: '#222', marginTop: 12, textAlign: 'center' },
+
+  timeBarTrack: {
+    width: width * 0.8,
+    height: 8,
+    backgroundColor: '#e0e0e0',
+    borderRadius: 5,
+    overflow: 'hidden',
+    marginTop: 0,
+    marginBottom: 8,
+  },
+  timeBarFill: {
+    height: 8,
+    backgroundColor: '#ffa930',
+    borderRadius: 5,
+  },
+  distanceBarTrack: {
+    width: width * 0.8,
+    height: 8,
+    backgroundColor: '#b5e8fc',
+    borderRadius: 8,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  distanceBar: {
+    height: 8,
+    backgroundColor: '#11b364',
+    borderRadius: 8,
+  },
+});

@@ -320,6 +320,18 @@ export default function MemberDetail() {
         >
           <Text style={styles.buttonText}>로그 보기</Text>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, { backgroundColor: '#009688' }]}
+          onPress={() => {
+            router.push({
+              pathname: '/stamp-history',
+              params: { uuid, name },
+            });
+          }}
+        >
+          <Text style={styles.buttonText}>스탬프 이력</Text>
+        </TouchableOpacity>
   
         <TouchableOpacity
           style={[styles.button, styles.deleteButton, isDeleting && { opacity: 0.6 }]}
