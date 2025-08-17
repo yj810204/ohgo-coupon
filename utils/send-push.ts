@@ -1,0 +1,154 @@
+import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
+import { Alert } from 'react-native';
+import { db } from '../firebase';
+import * as Notifications from 'expo-notifications';
+
+export const notifyAllAdmins = async (message: string, title: string = '알림', screen: string = 'admin-main') => {
+  try {
+    const snapshot = await getDocs(collection(db, 'users'));
+    const adminList = snapshot.docs
+      .map(doc => doc.data())
+      .filter(user => user.isAdmin && user.expoPushToken);
+
+    for (const admin of adminList) {
+      await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Accept-Encoding': 'gzip, deflate',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: admin.expoPushToken,
+          sound: 'default',
+          title: title,
+          body: message,
+          data: {
+            screen: screen,
+          },
+        }),
+      });
+    }
+
+    console.log(`✅ 관리자에게 알림 전송 완료: ${title}`);
+  } catch (err) {
+    console.error('❗ 관리자 푸시 전송 실패:', err);
+  }
+};
+
+export const sendPushToUser = async ({
+  uuid,
+  title,
+  body,
+  data = {},
+}: {
+  uuid: string;
+  title: string;
+  body: string;
+  data?: Record<string, any>;
+}) => {
+  try {
+    const snap = await getDoc(doc(db, 'users', uuid));
+
+    if (!snap.exists()) {
+      console.warn('회원 없음:', uuid);
+      Alert.alert('오류', '회원 정보를 찾을 수 없습니다.');
+      return;
+    }
+
+    const expoPushToken = snap.data().expoPushToken;
+
+    if (!expoPushToken) {
+      console.warn('❗푸시 토큰 없음:', uuid);
+
+      Alert.alert(
+        '푸시 실패',
+        '해당 회원에게 저장된 푸시 토큰이 없습니다.\n\n알림 권한이 꺼져 있을 수 있습니다.\n설정에서 알림을 활성화해 주세요.'
+      );
+
+      return;
+    }
+
+    const payload = {
+      to: expoPushToken,
+      sound: 'default',
+      title,
+      body,
+      data,
+    };
+
+    console.log('푸시 페이로드:', payload);
+
+    const response = await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Accept-Encoding': 'gzip, deflate',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    console.log('푸시 응답 상태:', response.status);
+    const text = await response.text();
+    console.log('푸시 응답 본문:', text);
+
+    if (!response.ok) {
+      Alert.alert('푸시 실패', 'Expo 서버에서 오류가 발생했습니다.');
+    }
+  } catch (error) {
+    console.error('푸시 전송 에러:', error);
+    Alert.alert('푸시 실패', '알 수 없는 오류');
+  }
+};
+
+
+export const sendPushToAllUsers = async ({
+  title,
+  body,
+  data = {},
+}: {
+  title: string;
+  body: string;
+  data?: Record<string, any>;
+}) => {
+  try {
+    const snapshot = await getDocs(collection(db, 'users'));
+
+    const userList = snapshot.docs
+      .map(doc => doc.data())
+      .filter(user => user.expoPushToken);
+
+    if (userList.length === 0) {
+      Alert.alert('알림 실패', '푸시 토큰이 있는 사용자가 없습니다.');
+      return;
+    }
+
+    for (const user of userList) {
+      const payload = {
+        to: user.expoPushToken,
+        sound: 'default',
+        title,
+        body,
+        data,
+      };
+
+      await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Accept-Encoding': 'gzip, deflate',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+    }
+
+    Alert.alert('발송 완료', `${userList.length}명에게 푸시알림을 보냈습니다.`);
+    console.log(`✅ ${userList.length}명에게 전체 푸시 전송 완료`);
+  } catch (error) {
+    console.error('❗전체 푸시 전송 실패:', error);
+    Alert.alert('푸시 실패', '전체 사용자에게 푸시 전송 중 오류가 발생했습니다.');
+  }
+};
+

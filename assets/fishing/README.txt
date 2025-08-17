@@ -1,0 +1,1 @@
+This is a placeholder asset pack for the pixel fishing mini-game.
