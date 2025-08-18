@@ -237,11 +237,10 @@ export default function RankingScreen() {
     // 전체 회원 수 설정 (실제 총 회원 수)
     setTotalMembers(usersData.length);
     
-    // 1, 2, 3등은 0포인트 초과인 사용자만 가능하도록 필터링
+    // 0포인트 초과인 사용자만 표시하도록 필터링
     const filteredUsersData = usersData.filter(user => {
-      // 상위 3등 중에서 0포인트 이하인 경우 필터링
-      const userRank = usersData.indexOf(user) + 1;
-      if (userRank <= 3 && user.totalPoint <= 0) {
+      // 0포인트 이하인 경우 필터링
+      if (user.totalPoint <= 0) {
         return false;
       }
       return true;
@@ -557,7 +556,7 @@ export default function RankingScreen() {
           {myRank && (
             <View style={styles.myRankContainer}>
               <Text style={styles.myRankText}>
-                내 순위: {myRank}위 / {totalMembers}명 중
+                내 순위: {myRank}위 / {users.length}명 중
               </Text>
             </View>
           )}

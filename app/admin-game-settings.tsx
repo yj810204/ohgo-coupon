@@ -34,6 +34,13 @@ export default function AdminGameSettingsScreen() {
   const [commonPoint, setCommonPoint] = useState('1000'); // 기본값 1000
   const [savingGameSettings, setSavingGameSettings] = useState(false);
 
+  // 특별 버튼 표시 설정
+  const [showBaitButton, setShowBaitButton] = useState(false);
+  const [showCatchButton, setShowCatchButton] = useState(false);
+  const [showDistanceButton, setShowDistanceButton] = useState(false);
+  const [showBombButton, setShowBombButton] = useState(false);
+  const [showPointButton, setShowPointButton] = useState(false);
+
   // Tournament data
   const [tournamentTitle, setTournamentTitle] = useState('');
   const [tournamentDescription, setTournamentDescription] = useState('');
@@ -103,10 +110,22 @@ export default function AdminGameSettingsScreen() {
         const data = gameSettingsDoc.data();
         setCommonDistance(data.distance?.toString() || '50');
         setCommonPoint(data.point?.toString() || '1000');
+        
+        // 특별 버튼 표시 설정 불러오기
+        setShowBaitButton(data.showBaitButton === true);
+        setShowCatchButton(data.showCatchButton === true);
+        setShowDistanceButton(data.showDistanceButton === true);
+        setShowBombButton(data.showBombButton === true);
+        setShowPointButton(data.showPointButton === true);
       } else {
         // 문서가 없으면 기본값 설정
         setCommonDistance('50');
         setCommonPoint('1000');
+        setShowBaitButton(false);
+        setShowCatchButton(false);
+        setShowDistanceButton(false);
+        setShowBombButton(false);
+        setShowPointButton(false);
       }
     } catch (error) {
       console.error('Error fetching game settings:', error);
@@ -239,6 +258,12 @@ export default function AdminGameSettingsScreen() {
       await setDoc(doc(db, 'gameSettings', 'fishing'), {
         distance: distanceNumber,
         point: pointNumber,
+        // 특별 버튼 표시 설정 저장
+        showBaitButton: showBaitButton,
+        showCatchButton: showCatchButton,
+        showDistanceButton: showDistanceButton,
+        showBombButton: showBombButton,
+        showPointButton: showPointButton,
         updatedAt: new Date()
       }, { merge: true });
       
@@ -509,6 +534,63 @@ export default function AdminGameSettingsScreen() {
             </Text>
           </View>
           
+          <Text style={[styles.label, { marginTop: 20, marginBottom: 10 }]}>특별 버튼 표시 설정</Text>
+          <Text style={styles.helpText}>
+            각 특별 버튼의 표시 여부를 설정합니다. 활성화된 버튼만 게임에서 나타납니다.
+          </Text>
+          
+          <View style={styles.toggleContainer}>
+            <View style={styles.toggleItem}>
+              <Text style={styles.toggleLabel}>미끼 버튼</Text>
+              <TouchableOpacity 
+                style={[styles.toggleButton, showBaitButton ? styles.toggleActive : styles.toggleInactive]} 
+                onPress={() => setShowBaitButton(!showBaitButton)}
+              >
+                <Text style={styles.toggleText}>{showBaitButton ? '켜짐' : '꺼짐'}</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.toggleItem}>
+              <Text style={styles.toggleLabel}>필살기 버튼</Text>
+              <TouchableOpacity 
+                style={[styles.toggleButton, showCatchButton ? styles.toggleActive : styles.toggleInactive]} 
+                onPress={() => setShowCatchButton(!showCatchButton)}
+              >
+                <Text style={styles.toggleText}>{showCatchButton ? '켜짐' : '꺼짐'}</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.toggleItem}>
+              <Text style={styles.toggleLabel}>거리 감소 버튼</Text>
+              <TouchableOpacity 
+                style={[styles.toggleButton, showDistanceButton ? styles.toggleActive : styles.toggleInactive]} 
+                onPress={() => setShowDistanceButton(!showDistanceButton)}
+              >
+                <Text style={styles.toggleText}>{showDistanceButton ? '켜짐' : '꺼짐'}</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.toggleItem}>
+              <Text style={styles.toggleLabel}>꽝 버튼</Text>
+              <TouchableOpacity 
+                style={[styles.toggleButton, showBombButton ? styles.toggleActive : styles.toggleInactive]} 
+                onPress={() => setShowBombButton(!showBombButton)}
+              >
+                <Text style={styles.toggleText}>{showBombButton ? '켜짐' : '꺼짐'}</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.toggleItem}>
+              <Text style={styles.toggleLabel}>포인트 추가 버튼</Text>
+              <TouchableOpacity 
+                style={[styles.toggleButton, showPointButton ? styles.toggleActive : styles.toggleInactive]} 
+                onPress={() => setShowPointButton(!showPointButton)}
+              >
+                <Text style={styles.toggleText}>{showPointButton ? '켜짐' : '꺼짐'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          
           <TouchableOpacity 
             style={[styles.saveButton, savingGameSettings && styles.disabledButton]} 
             onPress={saveGameSettings}
@@ -720,5 +802,40 @@ const styles = StyleSheet.create({
   modalBox: {
     backgroundColor: '#fff',
     padding: 10,
+  },
+  // 토글 버튼 스타일
+  toggleContainer: {
+    marginBottom: 15,
+  },
+  toggleItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  toggleLabel: {
+    fontSize: 14,
+    fontFamily: 'GiantRegular',
+    color: '#333',
+  },
+  toggleButton: {
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 20,
+    minWidth: 70,
+    alignItems: 'center',
+  },
+  toggleActive: {
+    backgroundColor: '#4CAF50',
+  },
+  toggleInactive: {
+    backgroundColor: '#9E9E9E',
+  },
+  toggleText: {
+    color: '#fff',
+    fontSize: 14,
+    fontFamily: 'GiantBold',
   },
 });

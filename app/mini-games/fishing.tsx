@@ -711,7 +711,7 @@ export default function FishingGame() {
   });
 
   // 특별 버튼 상태
-  // const [showBaitButton, setShowBaitButton] = useState(false);
+  const [showBaitButton, setShowBaitButton] = useState(false);
   const [showCatchButton, setShowCatchButton] = useState(false);
   const [showDistanceButton, setShowDistanceButton] = useState(false);
   const [showBombButton, setShowBombButton] = useState(false);
@@ -949,6 +949,13 @@ export default function FishingGame() {
     }
   };
 
+  // Firebase 버튼 설정을 저장할 변수들
+  const [firebaseBaitButton, setFirebaseBaitButton] = useState(false);
+  const [firebaseCatchButton, setFirebaseCatchButton] = useState(false);
+  const [firebaseDistanceButton, setFirebaseDistanceButton] = useState(false);
+  const [firebaseBombButton, setFirebaseBombButton] = useState(false);
+  const [firebasePointButton, setFirebasePointButton] = useState(false);
+
   // 게임 설정 가져오기
   const fetchGameSettings = async () => {
     try {
@@ -962,17 +969,65 @@ export default function FishingGame() {
         if (data.point) {
           setCommonPoint(data.point);
         }
+        
+        // 특별 버튼 표시 설정 불러오기 - 게임 시작 시에는 버튼을 표시하지 않도록 수정
+        if (data.showBaitButton !== undefined) {
+          // 버튼 상태는 항상 false로 시작하고, Firebase 설정만 저장
+          setShowBaitButton(false);
+          setFirebaseBaitButton(data.showBaitButton);
+        }
+        if (data.showCatchButton !== undefined) {
+          setShowCatchButton(false);
+          setFirebaseCatchButton(data.showCatchButton);
+        }
+        if (data.showDistanceButton !== undefined) {
+          setShowDistanceButton(false);
+          setFirebaseDistanceButton(data.showDistanceButton);
+        }
+        if (data.showBombButton !== undefined) {
+          setShowBombButton(false);
+          setFirebaseBombButton(data.showBombButton);
+        }
+        if (data.showPointButton !== undefined) {
+          setShowPointButton(false);
+          setFirebasePointButton(data.showPointButton);
+        }
+        
         console.log('Game settings loaded - distance:', data.distance, 'point:', data.point);
+        console.log('Button settings loaded - bait:', data.showBaitButton, 'catch:', data.showCatchButton, 
+                    'distance:', data.showDistanceButton, 'bomb:', data.showBombButton, 'point:', data.showPointButton);
       } else {
         console.log('No game settings document exists, using defaults');
         setCommonDistance(DEFAULT_COMMON_DISTANCE);
         setCommonPoint(DEFAULT_COMMON_POINT);
+        // 기본적으로 버튼은 모두 비활성화
+        setShowBaitButton(false);
+        setShowCatchButton(false);
+        setShowDistanceButton(false);
+        setShowBombButton(false);
+        setShowPointButton(false);
+        setFirebaseBaitButton(false);
+        setFirebaseCatchButton(false);
+        setFirebaseDistanceButton(false);
+        setFirebaseBombButton(false);
+        setFirebasePointButton(false);
       }
     } catch (error) {
       console.error('게임 설정 가져오기 오류:', error);
       // 오류 발생 시 기본값 사용
       setCommonDistance(DEFAULT_COMMON_DISTANCE);
       setCommonPoint(DEFAULT_COMMON_POINT);
+      // 기본적으로 버튼은 모두 비활성화
+      setShowBaitButton(false);
+      setShowCatchButton(false);
+      setShowDistanceButton(false);
+      setShowBombButton(false);
+      setShowPointButton(false);
+      setFirebaseBaitButton(false);
+      setFirebaseCatchButton(false);
+      setFirebaseDistanceButton(false);
+      setFirebaseBombButton(false);
+      setFirebasePointButton(false);
     }
   };
 
@@ -1019,7 +1074,9 @@ export default function FishingGame() {
     // 포인트를 10단위로 반올림 (5 이상은 올림, 5 미만은 내림)
     const rawPoint = Math.round(commonPoint * pointPercent);
     const lastDigit = rawPoint % 10;
-    const point = lastDigit >= 5 ? rawPoint + (10 - lastDigit) : rawPoint - lastDigit;
+    let point = lastDigit >= 5 ? rawPoint + (10 - lastDigit) : rawPoint - lastDigit;
+    // 최소 1포인트 보장
+    point = Math.max(1, point);
 
     return { distance, limitTime, point };
   };
@@ -1637,45 +1694,54 @@ export default function FishingGame() {
         specialButtonAnim.setValue(1);
         startSpecialButtonAnimation();
 
-        // 5개 버튼 중 하나만 랜덤하게 표시
-        const buttonRandom = Math.random();
+        // 활성화된 버튼들을 배열로 모음 (Firebase 설정 사용)
+        const enabledButtons = [];
+        if (firebaseBaitButton) enabledButtons.push('bait');
+        if (firebaseCatchButton) enabledButtons.push('catch');
+        if (firebaseDistanceButton) enabledButtons.push('distance');
+        if (firebaseBombButton) enabledButtons.push('bomb');
+        if (firebasePointButton) enabledButtons.push('point');
+        
+        // 활성화된 버튼이 없으면 함수 종료
+        if (enabledButtons.length === 0) {
+          stopSpecialButtonAnimation();
+          return;
+        }
+        
+        // 활성화된 버튼 중 하나를 랜덤하게 선택
+        const randomButtonIndex = Math.floor(Math.random() * enabledButtons.length);
+        const selectedButton = enabledButtons[randomButtonIndex];
 
-        // 모든 버튼 상태 초기화 (한 번에 하나의 버튼만 표시)
-        //setShowBaitButton(false);
-        setShowCatchButton(false);
-        setShowDistanceButton(false);
-        setShowBombButton(false);
-        setShowPointButton(false);
-
-        if (buttonRandom < 0.2) {
-          // setShowBaitButton(true);
-          // // 3초 후 버튼 사라짐
-          // setTimeout(() => {
-          //   setShowBaitButton(false);
-          //   stopSpecialButtonAnimation();
-          // }, 3000);
-        } else if (buttonRandom < 0.4) {
+        // 선택된 버튼만 표시
+        if (selectedButton === 'bait') {
+          setShowBaitButton(true);
+          // 3초 후 버튼 사라짐
+          setTimeout(() => {
+            setShowBaitButton(false);
+            stopSpecialButtonAnimation();
+          }, 3000);
+        } else if (selectedButton === 'catch') {
           setShowCatchButton(true);
           // 1초 후 버튼 사라짐 (빨리 사라지도록 변경)
           setTimeout(() => {
             setShowCatchButton(false);
             stopSpecialButtonAnimation();
           }, 1000);
-        } else if (buttonRandom < 0.6) {
+        } else if (selectedButton === 'distance') {
           setShowDistanceButton(true);
           // 3초 후 버튼 사라짐
           setTimeout(() => {
             setShowDistanceButton(false);
             stopSpecialButtonAnimation();
           }, 3000);
-        } else if (buttonRandom < 0.8) {
+        } else if (selectedButton === 'bomb') {
           setShowBombButton(true);
           // 3초 후 버튼 사라짐
           setTimeout(() => {
             setShowBombButton(false);
             stopSpecialButtonAnimation();
           }, 3000);
-        } else {
+        } else if (selectedButton === 'point') {
           setShowPointButton(true);
           // 3초 후 버튼 사라짐
           setTimeout(() => {
@@ -1686,66 +1752,8 @@ export default function FishingGame() {
       }, 1000 + Math.random() * 4000);
     }
 
-    // 한 게임에 여러번 버튼이 생길 수 있도록 추가 기회 제공
-    // 첫 번째 버튼 이후 3~8초 사이에 다시 버튼 생성 시도
-    setTimeout(() => {
-      if (Math.random() < 0.6 && state === 'reel') { // 60% 확률로 추가 버튼 생성 시도
-        // 화면 내 랜덤 위치 계산 (화면 가장자리 피하기)
-        const buttonSize = 80;
-        const padding = 20;
-        const randomX = padding + Math.random() * (width - buttonSize - padding * 2);
-        const randomY = padding + Math.random() * (height / 2 - buttonSize - padding * 2);
-
-        setSpecialButtonPosition({ x: randomX, y: randomY });
-
-        // 애니메이션 시작
-        specialButtonAnim.setValue(1);
-        startSpecialButtonAnimation();
-
-        // 모든 버튼 상태 초기화 (한 번에 하나의 버튼만 표시)
-        //setShowBaitButton(false);
-        setShowCatchButton(false);
-        setShowDistanceButton(false);
-        setShowBombButton(false);
-        setShowPointButton(false);
-
-        // 5개 버튼 중 하나만 랜덤하게 표시
-        const buttonRandom = Math.random();
-
-        if (buttonRandom < 0.2) {
-          // setShowBaitButton(true);
-          // setTimeout(() => {
-          //   setShowBaitButton(false);
-          //   stopSpecialButtonAnimation();
-          // }, 3000);
-        } else if (buttonRandom < 0.4) {
-          setShowCatchButton(true);
-          // 1초 후 버튼 사라짐 (빨리 사라지도록 변경)
-          setTimeout(() => {
-            setShowCatchButton(false);
-            stopSpecialButtonAnimation();
-          }, 1000);
-        } else if (buttonRandom < 0.6) {
-          setShowDistanceButton(true);
-          setTimeout(() => {
-            setShowDistanceButton(false);
-            stopSpecialButtonAnimation();
-          }, 3000);
-        } else if (buttonRandom < 0.8) {
-          setShowBombButton(true);
-          setTimeout(() => {
-            setShowBombButton(false);
-            stopSpecialButtonAnimation();
-          }, 3000);
-        } else {
-          setShowPointButton(true);
-          setTimeout(() => {
-            setShowPointButton(false);
-            stopSpecialButtonAnimation();
-          }, 3000);
-        }
-      }
-    }, 3000 + Math.random() * 5000);
+    // 한 게임에 한 번만 버튼이 나타나도록 수정
+    // 두 번째 버튼 생성 로직 제거
   }
 
 
@@ -1810,7 +1818,7 @@ export default function FishingGame() {
 
       // 특별 버튼 애니메이션 정리 및 버튼 숨기기
       stopSpecialButtonAnimation();
-      //setShowBaitButton(false);
+      setShowBaitButton(false);
       setShowCatchButton(false);
       setShowDistanceButton(false);
       setShowBombButton(false);
@@ -1899,7 +1907,7 @@ export default function FishingGame() {
     setShowResetButton(false); // 다시하기 버튼 숨기기
 
     // 특별 버튼 숨기기 및 애니메이션 중지
-    //setShowBaitButton(false);
+    setShowBaitButton(false);
     setShowCatchButton(false);
     setShowDistanceButton(false);
     setShowBombButton(false);
@@ -2303,72 +2311,72 @@ export default function FishingGame() {
                           </View>
 
                           {/* 특별 버튼 - 미끼 추가 */}
-                          {/*{showBaitButton && (*/}
-                          {/*  <Animated.View*/}
-                          {/*    style={{*/}
-                          {/*      position: 'absolute',*/}
-                          {/*      left: specialButtonPosition.x,*/}
-                          {/*      top: specialButtonPosition.y,*/}
-                          {/*      zIndex: 100,*/}
-                          {/*    }}*/}
-                          {/*  >*/}
-                          {/*    <TouchableOpacity*/}
-                          {/*      style={[styles.specialButton, {*/}
-                          {/*        backgroundColor: '#4CAF50',*/}
-                          {/*      }]}*/}
-                          {/*      onPress={async () => {*/}
-                          {/*        // 5~10개 사이 랜덤으로 미끼 추가*/}
-                          {/*        const extraBait = 5 + Math.floor(Math.random() * 6);*/}
-                          {/*        setBaitCount(prev => prev + extraBait);*/}
+                          {showBaitButton && (
+                            <Animated.View
+                              style={{
+                                position: 'absolute',
+                                left: specialButtonPosition.x,
+                                top: specialButtonPosition.y,
+                                zIndex: 100,
+                              }}
+                            >
+                              <TouchableOpacity
+                                style={[styles.specialButton, {
+                                  backgroundColor: '#4CAF50',
+                                }]}
+                                onPress={async () => {
+                                  // 5~10개 사이 랜덤으로 미끼 추가
+                                  const extraBait = 5 + Math.floor(Math.random() * 6);
+                                  setBaitCount(prev => prev + extraBait);
 
-                          {/*        // 버튼 숨기기*/}
-                          {/*        setShowBaitButton(false);*/}
+                                  // 버튼 숨기기
+                                  setShowBaitButton(false);
 
-                          {/*        // 애니메이션 중지*/}
-                          {/*        stopSpecialButtonAnimation();*/}
+                                  // 애니메이션 중지
+                                  stopSpecialButtonAnimation();
 
-                          {/*        // 진동 피드백*/}
-                          {/*        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);*/}
-                          {/*        */}
-                          {/*        // 파이어베이스 baitUsage 컬렉션의 오늘 날짜 used 값 업데이트*/}
-                          {/*        try {*/}
-                          {/*          if (uuid) {*/}
-                          {/*            const usageRef = doc(db, `users/${uuid}/baitUsage`, todayStr());*/}
-                          {/*            const usageSnap = await getDoc(usageRef);*/}
-                          {/*            */}
-                          {/*            if (usageSnap.exists()) {*/}
-                          {/*              const currentUsed = usageSnap.data().used || 0;*/}
-                          {/*              // used 값에서 획득한 미끼 수만큼 빼기*/}
-                          {/*              await updateDoc(usageRef, { */}
-                          {/*                used: Math.max(0, currentUsed - extraBait) */}
-                          {/*              });*/}
-                          {/*              // 로컬 상태 업데이트*/}
-                          {/*              setTodayBaitUsed(prev => Math.max(0, prev - extraBait));*/}
-                          {/*            }*/}
-                          {/*          }*/}
-                          {/*        } catch (error) {*/}
-                          {/*          console.error('Error updating baitUsage:', error);*/}
-                          {/*        }*/}
-                          {/*      }}*/}
-                          {/*    >*/}
-                          {/*      <View style={{*/}
-                          {/*        width: '100%',*/}
-                          {/*        height: '100%',*/}
-                          {/*        justifyContent: 'center',*/}
-                          {/*        alignItems: 'center',*/}
-                          {/*        backgroundColor: 'rgba(255, 255, 255, 0.2)',*/}
-                          {/*        borderRadius: 37, // Slightly smaller than parent to create a nice border effect*/}
-                          {/*      }}>*/}
-                          {/*        <Animated.Text style={{*/}
-                          {/*          fontSize: 24,*/}
-                          {/*          marginBottom: 4,*/}
-                          {/*          transform: [{ scale: specialButtonAnim }]*/}
-                          {/*        }}>🐟</Animated.Text>*/}
-                          {/*        <Text style={styles.specialButtonText}>+미끼</Text>*/}
-                          {/*      </View>*/}
-                          {/*    </TouchableOpacity>*/}
-                          {/*  </Animated.View>*/}
-                          {/*)}*/}
+                                  // 진동 피드백
+                                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+                                  // 파이어베이스 baitUsage 컬렉션의 오늘 날짜 used 값 업데이트
+                                  try {
+                                    if (uuid) {
+                                      const usageRef = doc(db, `users/${uuid}/baitUsage`, todayStr());
+                                      const usageSnap = await getDoc(usageRef);
+
+                                      if (usageSnap.exists()) {
+                                        const currentUsed = usageSnap.data().used || 0;
+                                        // used 값에서 획득한 미끼 수만큼 빼기
+                                        await updateDoc(usageRef, {
+                                          used: Math.max(0, currentUsed - extraBait)
+                                        });
+                                        // 로컬 상태 업데이트
+                                        setTodayBaitUsed(prev => Math.max(0, prev - extraBait));
+                                      }
+                                    }
+                                  } catch (error) {
+                                    console.error('Error updating baitUsage:', error);
+                                  }
+                                }}
+                              >
+                                <View style={{
+                                  width: '100%',
+                                  height: '100%',
+                                  justifyContent: 'center',
+                                  alignItems: 'center',
+                                  backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                                  borderRadius: 37, // Slightly smaller than parent to create a nice border effect
+                                }}>
+                                  <Animated.Text style={{
+                                    fontSize: 24,
+                                    marginBottom: 4,
+                                    transform: [{ scale: specialButtonAnim }]
+                                  }}>🐟</Animated.Text>
+                                  <Text style={styles.specialButtonText}>+미끼</Text>
+                                </View>
+                              </TouchableOpacity>
+                            </Animated.View>
+                          )}
 
                           {/* 특별 버튼 - 필살기 */}
                           {showCatchButton && (

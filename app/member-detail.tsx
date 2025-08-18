@@ -13,7 +13,7 @@ import {
   useOneCoupon
 } from '../utils/stamp-service';
 import * as SecureStore from 'expo-secure-store';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '@/firebase';
 
 export default function MemberDetail() {
@@ -22,10 +22,12 @@ export default function MemberDetail() {
 
   const [stampCount, setStampCount] = useState(0);
   const [couponCount, setCouponCount] = useState(0);
+  const [points, setPoints] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingOne, setIsLoadingOne] = useState(false);
   const [isLoadingFive, setIsLoadingFive] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isResettingPoints, setIsResettingPoints] = useState(false);
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const [createdAt, setCreatedAt] = useState('');
@@ -36,6 +38,7 @@ export default function MemberDetail() {
   const onRefresh = async () => {
   setRefreshing(true);
   await loadCounts();
+  await loadTargetUserInfo();
   setRefreshing(false);
 };
 
@@ -56,6 +59,8 @@ export default function MemberDetail() {
           const ts = typeof data.createdAt === 'string' ? new Date(data.createdAt) : data.createdAt.toDate();
           setCreatedAt(format(ts, 'yy-MM-dd'));
         }
+        // Get user points, default to 0 if not set
+        setPoints(data.totalPoint || 0);
       }
   
       // 마지막 스탬프 날짜 계산
@@ -166,6 +171,21 @@ export default function MemberDetail() {
     }
   };
 
+  const resetPoints = async () => {
+    setIsResettingPoints(true);
+    try {
+      const userRef = doc(db, 'users', uuid);
+      await updateDoc(userRef, { totalPoint: 0 });
+      setPoints(0);
+      Alert.alert('포인트 초기화 완료', `${name}님의 포인트가 0으로 초기화되었습니다.`);
+    } catch (err: any) {
+      console.error('포인트 초기화 실패:', err);
+      Alert.alert('포인트 초기화 실패', err.message);
+    } finally {
+      setIsResettingPoints(false);
+    }
+  };
+
   const handleDeleteUser = async () => {
     if (targetUserIsAdmin) {
       Alert.alert('삭제 불가', '관리자는 삭제할 수 없습니다.');
@@ -221,6 +241,22 @@ export default function MemberDetail() {
           <Text style={styles.infoLabel}>가입일:</Text>
           <Text style={styles.infoValue}>{createdAt}</Text>
         </View>
+        <TouchableOpacity
+          style={styles.infoRow}
+          onPress={() => Alert.alert(
+            '포인트 초기화',
+            `${name}님의 포인트를 0으로 초기화 하시겠습니까?`,
+            [
+              { text: '취소', style: 'cancel' },
+              { text: '확인', onPress: () => resetPoints() }
+            ]
+          )}
+        >
+          <Text style={styles.infoLabel}>포인트:</Text>
+          <Text style={[styles.infoValue, { textDecorationLine: 'underline', color: '#1e88e5' }]}>
+            {points.toLocaleString()}P
+          </Text>
+        </TouchableOpacity>
         <TouchableOpacity
           style={styles.infoRow}
           onPress={() => Alert.alert('UUID', uuid)}
