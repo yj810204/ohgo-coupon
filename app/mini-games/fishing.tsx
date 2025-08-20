@@ -1526,14 +1526,28 @@ export default function FishingGame() {
       Alert.alert('물고기 데이터가 없습니다!');
       return;
     }
-    // 날짜 유효성 검사
-    if (!isDateValid) {
-      Alert.alert(
-        '날짜 불일치',
-        '디바이스의 날짜와 서버의 날짜가 일치하지 않아 게임을 시작할 수 없습니다. 디바이스의 날짜와 시간 설정을 확인해주세요.',
-        [{ text: '확인', style: 'default' }]
-      );
-      return;
+    
+    // 게임 시작 버튼 누를 때 한번 더 날짜 검증
+    try {
+      setIsDateChecking(true);
+      const sDate = await getServerDate();
+      const dDate = todayStr();
+      const isValid = sDate === dDate;
+      setIsDateValid(isValid);
+      setIsDateChecking(false);
+      
+      // 날짜 유효성 검사
+      if (!isValid) {
+        Alert.alert(
+          '날짜 불일치',
+          '디바이스의 날짜와 서버의 날짜가 일치하지 않아 게임을 시작할 수 없습니다. 디바이스의 날짜와 시간 설정을 확인해주세요.',
+          [{ text: '확인', style: 'default' }]
+        );
+        return;
+      }
+    } catch (error) {
+      console.error('게임 시작 시 날짜 검증 오류:', error);
+      setIsDateChecking(false);
     }
     // 이벤트 기간 체크
     if (tournament) {
