@@ -15,6 +15,7 @@ import { collection, getDocs, query, orderBy, limit, doc, getDoc, where } from '
 import { db } from '../../firebase';
 import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system';
+import * as SecureStore from 'expo-secure-store';
 
 // 메달 이미지 컴포넌트
 const MedalIcon = ({ rank }: { rank: number }) => {
@@ -144,6 +145,7 @@ export default function RankingScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [tournament, setTournament] = useState<Tournament>(null);
   const [totalMembers, setTotalMembers] = useState<number>(0);
+  const [isAdmin, setIsAdmin] = useState(false); // 관리자 상태
   
   // 물고기 잡은 기록 모달 관련 상태
   const [modalVisible, setModalVisible] = useState(false);
@@ -155,6 +157,25 @@ export default function RankingScreen() {
 
   useEffect(() => {
     fetchRankingData();
+  }, []);
+  
+  // Check if user is admin
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      try {
+        const userInfoString = await SecureStore.getItemAsync('userInfo');
+        if (userInfoString) {
+          const userInfo = JSON.parse(userInfoString);
+          const adminStatus = userInfo.isAdmin === true;
+          setIsAdmin(adminStatus);
+          console.log('Admin status:', adminStatus);
+        }
+      } catch (error) {
+        console.error('Error checking admin status:', error);
+      }
+    };
+    
+    checkAdminStatus();
   }, []);
   
   // Auto-scroll to user's position when myRank is set
@@ -426,7 +447,7 @@ export default function RankingScreen() {
             styles.userName,
             isCurrentUser && styles.currentUserText
           ]}>
-            {isCurrentUser ? item.name : maskName(item.name)}
+            {isCurrentUser || isAdmin ? item.name : maskName(item.name)}
             {isCurrentUser && ' (나)'}
           </Text>
         </View>
@@ -572,7 +593,7 @@ export default function RankingScreen() {
               <View style={styles.modalContent}>
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>
-                    {selectedUser?.id === uuid ? selectedUser?.name : maskName(selectedUser?.name || '')}님의 기록 요약
+                    {selectedUser?.id === uuid || isAdmin ? selectedUser?.name : maskName(selectedUser?.name || '')}님의 기록 요약
                   </Text>
                   <TouchableOpacity onPress={() => setModalVisible(false)}>
                     <Ionicons name="close" size={24} color="#333" />

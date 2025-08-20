@@ -1,7 +1,7 @@
 import { format } from 'date-fns';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View, Modal } from 'react-native';
 import { getTodayCouponsStatus } from '../utils/coupon-utils';
 import { sendPushToUser } from '../utils/send-push';
 import {
@@ -33,7 +33,16 @@ export default function MemberDetail() {
   const [createdAt, setCreatedAt] = useState('');
   const [lastStampDate, setLastStampDate] = useState('');
   const [logs, setLogs] = useState<string[]>([]);
-  const [logsVisible, setLogsVisible] = useState(false)
+  const [logsVisible, setLogsVisible] = useState(false);
+  const [rosterData, setRosterData] = useState<{
+    name: string;
+    birth: string;
+    gender: string;
+    phone: string;
+    emergency: string;
+    address: string;
+  } | null>(null);
+  const [modalVisible, setModalVisible] = useState(false);
 
   const onRefresh = async () => {
   setRefreshing(true);
@@ -74,10 +83,30 @@ export default function MemberDetail() {
       console.warn('회원 정보 로딩 실패:', err);
     }
   };
+  
+  const loadRosterData = async () => {
+    try {
+      const rosterSnap = await getDoc(doc(db, 'users', uuid, 'boarding', 'info'));
+      if (rosterSnap.exists()) {
+        const data = rosterSnap.data();
+        setRosterData(data as typeof rosterData);
+        return true;
+      } else {
+        setRosterData(null);
+        return false;
+      }
+    } catch (err) {
+      console.warn('명부 정보 로딩 실패:', err);
+      setRosterData(null);
+      return false;
+    }
+  };
 
   useEffect(() => {
     loadCounts();
     loadTargetUserInfo();
+    // Pre-load roster data
+    loadRosterData();
   }, [uuid]);
 
   const handleAddStamp = async () => {
@@ -217,6 +246,15 @@ export default function MemberDetail() {
     );
   };
 
+  const handleNamePress = async () => {
+    const hasRoster = await loadRosterData();
+    if (hasRoster) {
+      setModalVisible(true);
+    } else {
+      Alert.alert('알림', `${name}님의 명부 정보가 없습니다.`);
+    }
+  };
+
   return (
     <ScrollView
       contentContainerStyle={styles.container}
@@ -224,10 +262,60 @@ export default function MemberDetail() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={modalVisible}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{name}님의 명부 정보</Text>
+            
+            {rosterData && (
+              <View style={styles.rosterInfo}>
+                <View style={styles.rosterRow}>
+                  <Text style={styles.rosterLabel}>이름:</Text>
+                  <Text style={styles.rosterValue}>{rosterData.name}</Text>
+                </View>
+                <View style={styles.rosterRow}>
+                  <Text style={styles.rosterLabel}>생년월일:</Text>
+                  <Text style={styles.rosterValue}>{rosterData.birth}</Text>
+                </View>
+                <View style={styles.rosterRow}>
+                  <Text style={styles.rosterLabel}>성별:</Text>
+                  <Text style={styles.rosterValue}>{rosterData.gender}</Text>
+                </View>
+                <View style={styles.rosterRow}>
+                  <Text style={styles.rosterLabel}>연락처:</Text>
+                  <Text style={styles.rosterValue}>{rosterData.phone}</Text>
+                </View>
+                <View style={styles.rosterRow}>
+                  <Text style={styles.rosterLabel}>비상 연락처:</Text>
+                  <Text style={styles.rosterValue}>{rosterData.emergency}</Text>
+                </View>
+                <View style={styles.rosterRow}>
+                  <Text style={styles.rosterLabel}>주소:</Text>
+                  <Text style={styles.rosterValue}>{rosterData.address}</Text>
+                </View>
+              </View>
+            )}
+            
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setModalVisible(false)}
+            >
+              <Text style={styles.closeButtonText}>닫기</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     <View style={{ marginBottom: 12 }}>
       <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>이름:</Text>
-          <Text style={styles.infoValue}>{name}</Text>
+          <TouchableOpacity onPress={handleNamePress}>
+            <Text style={[styles.infoValue, { textDecorationLine: 'underline', color: '#1e88e5' }]}>{name}</Text>
+          </TouchableOpacity>
         </View>
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>생년월일:</Text>
@@ -486,5 +574,63 @@ const styles = StyleSheet.create({
     color: '#999',
     fontFamily: 'GiantRegular',
     flexShrink: 1, // 길어지면 줄이기
+  },
+  
+  // Modal styles
+  modalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 20,
+    width: '85%',
+    maxHeight: '80%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontFamily: 'GiantBold',
+    color: '#333',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  rosterInfo: {
+    marginBottom: 20,
+  },
+  rosterRow: {
+    flexDirection: 'row',
+    marginBottom: 8,
+  },
+  rosterLabel: {
+    width: 100,
+    fontSize: 14,
+    color: '#333',
+    fontFamily: 'GiantRegular',
+  },
+  rosterValue: {
+    fontSize: 14,
+    color: '#666',
+    fontFamily: 'GiantRegular',
+    flex: 1,
+  },
+  closeButton: {
+    backgroundColor: '#2196F3',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  closeButtonText: {
+    fontSize: 16,
+    color: '#fff',
+    fontFamily: 'GiantRegular',
   },
 });

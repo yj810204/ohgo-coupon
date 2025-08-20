@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Vibration } from 'react-native';
-import { collection, getDocs, doc, getDoc, setDoc, addDoc, updateDoc, increment, runTransaction, onSnapshot } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, setDoc, addDoc, updateDoc, increment, runTransaction, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -643,6 +643,29 @@ function todayStr() {
   return date.toISOString().split('T')[0];
 }
 
+// 서버 날짜를 가져오는 함수
+async function getServerDate() {
+  try {
+    // 서버 타임스탬프 문서 생성 또는 업데이트
+    const timestampRef = doc(db, 'system', 'timestamp');
+    await setDoc(timestampRef, { timestamp: serverTimestamp() }, { merge: true });
+    
+    // 서버 타임스탬프 문서 가져오기
+    const timestampDoc = await getDoc(timestampRef);
+    if (timestampDoc.exists() && timestampDoc.data().timestamp) {
+      const serverTimestampData = timestampDoc.data().timestamp.toDate();
+      // 한국 시간으로 변환 (+9시간)
+      serverTimestampData.setHours(serverTimestampData.getHours() + 9);
+      return serverTimestampData.toISOString().split('T')[0];
+    }
+  } catch (error) {
+    console.error('서버 날짜 가져오기 오류:', error);
+  }
+  
+  // 오류 발생 시 로컬 날짜 반환
+  return todayStr();
+}
+
 export default function FishingGame() {
   const router = useRouter();
   const { uuid, name, dob } = useLocalSearchParams<{
@@ -720,6 +743,11 @@ export default function FishingGame() {
 
   // 추가 포인트 상태
   const [extraPoint, setExtraPoint] = useState(0);
+  
+  // 날짜 검증 관련 상태
+  const [serverDate, setServerDate] = useState<string>('');
+  const [isDateValid, setIsDateValid] = useState<boolean>(true);
+  const [isDateChecking, setIsDateChecking] = useState<boolean>(true);
 
   // 특별 버튼 애니메이션
   const specialButtonAnim = useRef(new Animated.Value(1)).current;
@@ -1146,6 +1174,50 @@ export default function FishingGame() {
     }
   };
 
+  // 서버 날짜와 디바이스 날짜 비교
+  useEffect(() => {
+    if (!uuid) return;
+    
+    const checkDateValidity = async () => {
+      setIsDateChecking(true);
+      try {
+        // 서버 날짜 가져오기
+        const sDate = await getServerDate();
+        setServerDate(sDate);
+        
+        // 디바이스 날짜 가져오기
+        const dDate = todayStr();
+        
+        // 날짜 비교
+        const isValid = sDate === dDate;
+        setIsDateValid(isValid);
+        
+        if (!isValid) {
+          console.log('날짜 불일치 감지: 서버 날짜 =', sDate, '디바이스 날짜 =', dDate);
+        }
+      } catch (error) {
+        console.error('날짜 검증 오류:', error);
+        // 오류 발생 시 유효하다고 간주 (사용자 경험 저하 방지)
+        setIsDateValid(true);
+      } finally {
+        setIsDateChecking(false);
+      }
+    };
+    
+    checkDateValidity();
+  }, [uuid]);
+  
+  // 날짜 불일치 시 경고 표시
+  useEffect(() => {
+    if (!isDateChecking && !isDateValid) {
+      Alert.alert(
+        '날짜 불일치 감지',
+        '디바이스의 날짜와 서버의 날짜가 일치하지 않습니다. 디바이스의 날짜와 시간 설정을 확인해주세요.',
+        [{ text: '확인', style: 'default' }]
+      );
+    }
+  }, [isDateChecking, isDateValid]);
+
   // uuid 방어
   useEffect(() => {
     if (!uuid) return;
@@ -1452,6 +1524,15 @@ export default function FishingGame() {
     }
     if (fishes.length === 0) {
       Alert.alert('물고기 데이터가 없습니다!');
+      return;
+    }
+    // 날짜 유효성 검사
+    if (!isDateValid) {
+      Alert.alert(
+        '날짜 불일치',
+        '디바이스의 날짜와 서버의 날짜가 일치하지 않아 게임을 시작할 수 없습니다. 디바이스의 날짜와 시간 설정을 확인해주세요.',
+        [{ text: '확인', style: 'default' }]
+      );
       return;
     }
     // 이벤트 기간 체크
@@ -2010,7 +2091,8 @@ export default function FishingGame() {
                       };
 
                       const isTournamentActive = isWithinTournamentPeriod();
-                      const buttonDisabled = baitCount <= 0 || !isTournamentActive;
+                      // 날짜 검증 중이거나 날짜가 유효하지 않으면 버튼 비활성화
+                      const buttonDisabled = baitCount <= 0 || !isTournamentActive || isDateChecking || !isDateValid;
 
                       return (
                         <TouchableOpacity
@@ -2023,9 +2105,13 @@ export default function FishingGame() {
                         >
                           <Text style={styles.buttonText}>시작!</Text>
                           <Text style={styles.baitCountText}>
-                            {isTournamentActive
-                              ? `남은 미끼: ${baitCount}개`
-                              : "이벤트 기간이 아닙니다."}
+                            {isDateChecking 
+                              ? "날짜 확인 중..." 
+                              : !isDateValid 
+                                ? "날짜 설정을 확인해주세요." 
+                                : isTournamentActive
+                                  ? `남은 미끼: ${baitCount}개`
+                                  : "이벤트 기간이 아닙니다."}
                           </Text>
                         </TouchableOpacity>
                       );

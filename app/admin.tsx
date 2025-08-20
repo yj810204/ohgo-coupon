@@ -35,6 +35,7 @@ export default function AdminScreen() {
   const [sections, setSections] = useState<any[]>([]);
   const [keyword, setKeyword] = useState('');
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const [activeFilter, setActiveFilter] = useState<'all' | 'boarding' | 'coupon'>('all');
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -105,12 +106,18 @@ export default function AdminScreen() {
         const memoRef = collection(db, `users/${user.uuid}/memo`);
         const memoSnap = await getDocs(memoRef);
         const hasMemo = memoSnap.docs.some(doc => !doc.data().deleted); // 삭제 안된 메모 여부
+        
+        // Check for boarding info document
+        const boardingRef = collection(db, `users/${user.uuid}/boarding`);
+        const boardingSnap = await getDocs(boardingRef);
+        const hasBoarding = boardingSnap.docs.some(doc => doc.id === 'info');
     
         return {
           ...user,
           couponCount: activeCoupons.length,
           stampCount: stampSnap.docs.length,
           hasMemo, // ✅ 메모 존재 여부
+          hasBoarding, // ✅ boarding info 문서 존재 여부
         };
       })
     );
@@ -198,9 +205,33 @@ export default function AdminScreen() {
 
   const handleSearch = (text: string) => {
     setKeyword(text);
-    const filtered = allMembers.filter((m) =>
+    let filtered = allMembers.filter((m) =>
       m.name.toLowerCase().includes(text.toLowerCase())
     );
+    
+    // Apply additional filters based on activeFilter
+    if (activeFilter === 'boarding') {
+      filtered = filtered.filter(member => member.hasBoarding);
+    } else if (activeFilter === 'coupon') {
+      filtered = filtered.filter(member => member.couponCount > 0);
+    }
+    
+    setSections(groupByInitial(filtered));
+  };
+  
+  const applyFilter = (filterType: 'all' | 'boarding' | 'coupon') => {
+    setActiveFilter(filterType);
+    
+    let filtered = allMembers.filter((m) =>
+      m.name.toLowerCase().includes(keyword.toLowerCase())
+    );
+    
+    if (filterType === 'boarding') {
+      filtered = filtered.filter(member => member.hasBoarding);
+    } else if (filterType === 'coupon') {
+      filtered = filtered.filter(member => member.couponCount > 0);
+    }
+    
     setSections(groupByInitial(filtered));
   };
 
@@ -239,6 +270,36 @@ export default function AdminScreen() {
           value={keyword}
           onChangeText={handleSearch}
         />
+        <View style={styles.statsContainer}>
+          <TouchableOpacity 
+            onPress={() => applyFilter(activeFilter === 'boarding' ? 'all' : 'boarding')}
+            style={[
+              styles.statsButton,
+              activeFilter === 'boarding' && styles.activeStatsButton
+            ]}
+          >
+            <Text style={[
+              styles.statsText,
+              activeFilter === 'boarding' && styles.activeStatsText
+            ]}>
+              명부 작성: {allMembers.filter(member => member.hasBoarding).length}명
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            onPress={() => applyFilter(activeFilter === 'coupon' ? 'all' : 'coupon')}
+            style={[
+              styles.statsButton,
+              activeFilter === 'coupon' && styles.activeStatsButton
+            ]}
+          >
+            <Text style={[
+              styles.statsText,
+              activeFilter === 'coupon' && styles.activeStatsText
+            ]}>
+              쿠폰 보유: {allMembers.filter(member => member.couponCount > 0).length}명
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <SectionList
@@ -321,6 +382,14 @@ export default function AdminScreen() {
                     style={styles.memoIcon}
                   />
                 )}
+                {item.hasBoarding && (
+                  <Ionicons
+                    name="information-circle-outline"
+                    size={16}
+                    color="#4CAF50"
+                    style={styles.memoIcon}
+                  />
+                )}
               </View>
                 <View style={{ flexDirection: 'row', marginTop: 4 }}>
                   {item.stampCount > 0 && (
@@ -369,6 +438,30 @@ const styles = StyleSheet.create({
     shadowColor: '#000',
     shadowOpacity: 0.05,
     shadowRadius: 4,
+  },
+  statsContainer: {
+    marginTop: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  statsButton: {
+    padding: 6,
+    borderRadius: 8,
+  },
+  activeStatsButton: {
+    backgroundColor: '#e3f2fd',
+  },
+  statsText: {
+    fontSize: 14,
+    fontFamily: 'GiantRegular',
+    color: '#555',
+  },
+  activeStatsText: {
+    color: '#1565c0',
+    fontWeight: 'bold',
   },
   title: {
     fontSize: 18,
