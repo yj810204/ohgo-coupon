@@ -8,7 +8,7 @@ import { Alert, StyleSheet, Text, View } from 'react-native';
 import { findCaptains } from '../utils/find-captains';
 import { sendPushToUser } from '../utils/send-push';
 import { addStamp } from '../utils/stamp-service';
-import { doc, getDoc, updateDoc, increment } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, increment, collection, setDoc, arrayUnion, Timestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import * as Location from 'expo-location';
 
@@ -159,6 +159,13 @@ export default function QRScanScreen() {
             console.error('미끼 교환권 발행 오류:', error);
           }
           
+          // 출석 명부에 회원 추가
+          try {
+            await addMemberToAttendanceList(uuid);
+          } catch (error) {
+            console.error('출석 명부 추가 오류:', error);
+          }
+          
           await handleRequestToCaptains(name, uuid, dob);
           return showMessageAndBack(
             '스탬프가 적립되었어요!\n게임 미끼 교환권이 발행되었습니다.\n오늘도 즐거운 낚시 되세요 🎣',
@@ -219,6 +226,44 @@ return (
   </View>
   );
 }
+
+// ✅ 출석 명부에 회원 추가
+const addMemberToAttendanceList = async (uuid: string | string[]) => {
+  try {
+    // 현재 날짜 구하기 (YYYY-MM-DD 형식)
+    const today = new Date();
+    const dateString = today.toISOString().split('T')[0];
+    
+    // 회원 정보 확인
+    const userRef = doc(db, 'users', String(uuid));
+    const userSnap = await getDoc(userRef);
+    
+    if (!userSnap.exists()) {
+      console.log('회원 정보가 존재하지 않습니다.');
+      return false;
+    }
+    
+    // 명부 컬렉션 참조
+    const attendanceRef = doc(db, 'attendance', dateString);
+    
+    // 해당 날짜의 문서가 있는지 확인하고 없으면 생성
+    await setDoc(
+      attendanceRef, 
+      { 
+        date: Timestamp.fromDate(today),
+        members: arrayUnion(String(uuid)),
+        updatedAt: Timestamp.now()
+      }, 
+      { merge: true }
+    );
+    
+    console.log('출석 명부에 회원이 추가되었습니다.');
+    return true;
+  } catch (error) {
+    console.error('출석 명부 추가 오류:', error);
+    return false;
+  }
+};
 
 // ✅ 선장에게 푸시 전송
 const handleRequestToCaptains = async (name: string | string[], uuid: string | string[], dob: string | string[]) => {

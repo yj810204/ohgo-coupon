@@ -64,6 +64,13 @@ export default function AdminMainScreen() {
       params: params,
     });
   };
+  
+  const navigateToTodayRoster = () => {
+    router.push({
+      pathname: '/today-roster',
+      params: params,
+    });
+  };
 
 
   return (
@@ -131,6 +138,13 @@ export default function AdminMainScreen() {
               <Ionicons name="boat" size={40} color="#007AFF" />
             </View>
             <Text style={styles.menuText}>명부 작성</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.menuItem} onPress={navigateToTodayRoster}>
+            <View style={styles.iconContainer}>
+              <Ionicons name="calendar" size={40} color="#FF5722" />
+            </View>
+            <Text style={styles.menuText}>승선 명부</Text>
           </TouchableOpacity>
         </View>
 

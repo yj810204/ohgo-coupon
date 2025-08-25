@@ -239,6 +239,8 @@ export default function TabLayout() {
 
             <Stack.Screen name="mini-games/fishing" />
             <Stack.Screen name="mini-games/ranking" />
+            <Stack.Screen name="today-roster" />
+            <Stack.Screen name="roster-list" />
           </Stack>
           <ExpoStatusBar style="auto" />
         </SafeAreaView>
@@ -270,6 +272,8 @@ export default function TabLayout() {
       'admin-fish-add': 'New Fish',
       'admin-fish-edit': 'Edit Fish',
       'admin-game-settings': 'Game',
+      'today-roster': '승선 명부',
+      'roster-list': '승선 명부',
     };
     return titles[routeName ?? ''] ?? '';
   }
