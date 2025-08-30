@@ -8,6 +8,7 @@ import { db } from '../firebase';
 import ViewShot from 'react-native-view-shot';
 import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system';
+import { findCaptains } from '../utils/find-captains';
 
 type RosterItem = {
   id: string;
@@ -18,6 +19,9 @@ type RosterItem = {
   emergency: string;
   address: string;
   hasRoster: boolean;
+  isCaptain?: boolean;
+  isSailor?: boolean;
+  role?: string;
 };
 
 export default function RosterListScreen() {
@@ -62,36 +66,93 @@ export default function RosterListScreen() {
 
     setLoading(true);
     try {
+      // Get all captains and sailors first
+      const crewMembers = await findCaptains();
+      const crewIds = crewMembers.map(member => member.uuid);
+      const captainIds = crewMembers.filter(member => member.role === 'captain').map(captain => captain.uuid);
+      const sailorIds = crewMembers.filter(member => member.role === 'sailor').map(sailor => sailor.uuid);
+      
       // Get the attendance document for the specified date
       const attendanceRef = doc(db, 'attendance', String(date));
       const attendanceSnap = await getDoc(attendanceRef);
 
       const rosterData: RosterItem[] = [];
+      const memberIds: string[] = attendanceSnap.exists() && attendanceSnap.data().members 
+        ? attendanceSnap.data().members 
+        : [];
+      
+      // Format date from YYYYMMDD to YYYY-MM-DD
+      const formatDate = (dateStr: string): string => {
+        if (!dateStr || dateStr.length !== 8) return dateStr;
+        return `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
+      };
 
-      // Check if the attendance document exists and has members
-      if (attendanceSnap.exists() && attendanceSnap.data().members) {
-        const memberIds = attendanceSnap.data().members;
+      // First, add all captains and sailors to the roster list (they should always appear)
+      for (const crewMember of crewMembers) {
+        const userRef = doc(db, 'users', crewMember.uuid);
+        const userSnap = await getDoc(userRef);
+        
+        if (userSnap.exists()) {
+          const userData = userSnap.data();
+          
+          // Check if crew member has boarding info
+          const boardingInfoRef = doc(db, 'users', crewMember.uuid, 'boarding', 'info');
+          const boardingInfoSnap = await getDoc(boardingInfoRef);
+          
+          const hasRoster = boardingInfoSnap.exists();
+          const isCaptain = crewMember.role === 'captain';
+          const isSailor = crewMember.role === 'sailor';
+          
+          let rosterInfo = {
+            id: crewMember.uuid,
+            name: userData.name || crewMember.name || '',
+            birth: formatDate(userData.dob),
+            gender: '',
+            phone: '',
+            emergency: '',
+            address: '',
+            hasRoster: hasRoster,
+            isCaptain: isCaptain,
+            isSailor: isSailor,
+            role: crewMember.role
+          };
+          
+          if (hasRoster) {
+            const data = boardingInfoSnap.data();
+            rosterInfo = {
+              ...rosterInfo,
+              name: data.name || userData.displayName || '',
+              birth: formatDate(data.birth) || '',
+              gender: data.gender || '',
+              phone: data.phone || '',
+              emergency: data.emergency || '',
+              address: data.address || '',
+            };
+          }
+          
+          rosterData.push(rosterInfo);
+        }
+      }
 
-        // For each member ID in the attendance list
+      // Then add regular members from the attendance list (excluding captains and sailors that were already added)
+      if (memberIds.length > 0) {
         for (const memberId of memberIds) {
-          // First get user's basic info
+          // Skip if this member is a captain or sailor (already added)
+          if (crewIds.includes(memberId)) continue;
+          
+          // Get user's basic info
           const userRef = doc(db, 'users', memberId);
           const userSnap = await getDoc(userRef);
 
           if (userSnap.exists()) {
             const userData = userSnap.data();
 
-            // Then check if user has boarding info
+            // Check if user has boarding info
             const boardingInfoRef = doc(db, 'users', memberId, 'boarding', 'info');
             const boardingInfoSnap = await getDoc(boardingInfoRef);
 
             const hasRoster = boardingInfoSnap.exists();
-            // Format date from YYYYMMDD to YYYY-MM-DD
-            const formatDate = (dateStr: string): string => {
-              if (!dateStr || dateStr.length !== 8) return dateStr;
-              return `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
-            };
-
+            
             let rosterInfo = {
               id: memberId,
               name: userData.name || '',
@@ -100,7 +161,9 @@ export default function RosterListScreen() {
               phone: '',
               emergency: '',
               address: '',
-              hasRoster: hasRoster
+              hasRoster: hasRoster,
+              isCaptain: false,
+              isSailor: false
             };
 
             if (hasRoster) {
@@ -121,8 +184,14 @@ export default function RosterListScreen() {
         }
       }
 
-      // Sort by name
-      rosterData.sort((a, b) => a.name.localeCompare(b.name));
+      // Sort by role: captains first, then sailors, then regular members, then by name
+      rosterData.sort((a, b) => {
+        if (a.isCaptain && !b.isCaptain) return -1;
+        if (!a.isCaptain && b.isCaptain) return 1;
+        if (a.isSailor && !b.isSailor) return -1;
+        if (!a.isSailor && b.isSailor) return 1;
+        return a.name.localeCompare(b.name);
+      });
 
       setRosterItems(rosterData);
     } catch (error) {
@@ -206,12 +275,22 @@ export default function RosterListScreen() {
 
   const renderRosterItem = ({ item }: { item: RosterItem }) => (
       <TouchableOpacity
-          style={styles.rosterItem}
+          style={[
+            styles.rosterItem, 
+            item.isCaptain ? styles.captainRosterItem : null,
+            item.isSailor ? styles.sailorRosterItem : null
+          ]}
           onPress={() => handleRosterItemPress(item)}
       >
         <View style={styles.rosterItemContent}>
           <View style={styles.nameContainer}>
             <Text style={styles.rosterName}>{item.name}</Text>
+            {item.isCaptain && (
+                <Text style={styles.captainTag}>선장</Text>
+            )}
+            {item.isSailor && (
+                <Text style={styles.sailorTag}>선원</Text>
+            )}
             {!item.hasRoster && (
                 <Text style={styles.noRosterTag}>명부 없음</Text>
             )}
@@ -361,9 +440,21 @@ export default function RosterListScreen() {
                 </View>
                 <ScrollView style={styles.boardingListScroll}>
                   {rosterItems.map((item, index) => (
-                      <View key={item.id} style={styles.boardingListItem}>
+                      <View key={item.id} style={[
+                        styles.boardingListItem,
+                        item.isCaptain ? styles.boardingListCaptainItem : null,
+                        item.isSailor ? styles.boardingListSailorItem : null
+                      ]}>
                         <Text style={styles.boardingListNumber}>{index + 1}</Text>
-                        <Text style={styles.boardingListName}>{item.name}</Text>
+                        <Text style={[
+                          styles.boardingListName,
+                          item.isCaptain ? styles.boardingListCaptainText : null,
+                          item.isSailor ? styles.boardingListSailorText : null
+                        ]}>
+                          {item.name}
+                          {item.isCaptain ? ' (캡틴)' : ''}
+                          {item.isSailor ? ' (세일러)' : ''}
+                        </Text>
                         <Text style={styles.boardingListBirth}>{item.birth}</Text>
                         <Text style={styles.boardingListGender}>{item.gender}</Text>
                         <Text style={styles.boardingListAddress}>{item.address}</Text>
@@ -432,14 +523,23 @@ export default function RosterListScreen() {
 
                 <TouchableOpacity
                     style={styles.nextButton}
-                    onPress={captureAndSaveImage}
-                    disabled={savingImage}
+                    onPress={() => {
+                      // Stringify the roster items to pass as a parameter
+                      const rosterItemsJson = JSON.stringify(rosterItems);
+                      router.push({
+                        pathname: '/location-time-selection',
+                        params: {
+                          date,
+                          dateDisplay,
+                          dateYear,
+                          dateMonth,
+                          dateDay,
+                          rosterItems: rosterItemsJson
+                        }
+                      });
+                    }}
                 >
-                  {savingImage ? (
-                      <ActivityIndicator size="small" color="white" />
-                  ) : (
-                      <Text style={styles.buttonText}>다음</Text>
-                  )}
+                  <Text style={styles.buttonText}>다음</Text>
                 </TouchableOpacity>
               </View>
             </>
@@ -530,6 +630,16 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 2,
   },
+  captainRosterItem: {
+    backgroundColor: '#e3f2fd', // Light blue background for captains
+    borderLeftWidth: 4,
+    borderLeftColor: '#1e88e5',
+  },
+  sailorRosterItem: {
+    backgroundColor: '#e8f5e9', // Light green background for sailors
+    borderLeftWidth: 4,
+    borderLeftColor: '#4caf50',
+  },
   rosterItemContent: {
     flex: 1,
   },
@@ -543,6 +653,26 @@ const styles = StyleSheet.create({
     fontFamily: "GiantRegular",
     color: '#333',
     marginRight: 8,
+  },
+  captainTag: {
+    fontSize: 12,
+    color: 'white',
+    backgroundColor: '#1e88e5',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginRight: 8,
+    fontFamily: "GiantRegular"
+  },
+  sailorTag: {
+    fontSize: 12,
+    color: 'white',
+    backgroundColor: '#4caf50',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginRight: 8,
+    fontFamily: "GiantRegular"
   },
   noRosterTag: {
     fontSize: 12,
@@ -751,6 +881,12 @@ const styles = StyleSheet.create({
     marginLeft: 20,
     height: 50.5
   },
+  boardingListCaptainItem: {
+    backgroundColor: '#e3f2fd', // Light blue background for captains
+  },
+  boardingListSailorItem: {
+    backgroundColor: '#e8f5e9', // Light green background for sailors
+  },
   boardingListNumber: {
     width: 50,
     fontSize: 18,
@@ -762,6 +898,14 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#000',
     paddingTop: 10,
+  },
+  boardingListCaptainText: {
+    fontWeight: 'bold',
+    color: '#1e88e5',
+  },
+  boardingListSailorText: {
+    fontWeight: 'bold',
+    color: '#4caf50',
   },
   boardingListBirth: {
     width: 145,

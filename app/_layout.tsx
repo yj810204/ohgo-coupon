@@ -274,6 +274,7 @@ export default function TabLayout() {
       'admin-game-settings': 'Game',
       'today-roster': '승선 명부',
       'roster-list': '승선 명부',
+      'location-time-selection': '승선 명부',
     };
     return titles[routeName ?? ''] ?? '';
   }
