@@ -21,6 +21,10 @@ export default {
         '스탬프 적립을 위한 QR 스캔을 위해 사용자의 위치 정보 접근 권한이 필요합니다.',
       NSLocationAlwaysAndWhenInUseUsageDescription:
         '스탬프 적립을 위한 QR 스캔 기능을 원활히 사용하려면 위치 접근 권한이 필요합니다.',
+      NSPhotoLibraryAddUsageDescription:
+        '명부 이미지를 갤러리에 저장하기 위해 사진 라이브러리 접근 권한이 필요합니다.',
+      NSPhotoLibraryUsageDescription:
+        '명부 이미지를 갤러리에 저장하기 위해 사진 라이브러리 접근 권한이 필요합니다.',
     },
   },
   android: {
@@ -35,7 +39,9 @@ export default {
     permissions: [
       'ACCESS_FINE_LOCATION',
       'ACCESS_COARSE_LOCATION',
-      'CAMERA' // QR 스캔이 포함될 경우 추가 권장
+      'CAMERA', // QR 스캔이 포함될 경우 추가 권장
+      'WRITE_EXTERNAL_STORAGE', // 명부 이미지를 갤러리에 저장하기 위해 필요
+      'READ_EXTERNAL_STORAGE' // 명부 이미지를 갤러리에서 읽기 위해 필요
     ]
   },
   web: {
