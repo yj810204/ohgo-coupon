@@ -92,8 +92,8 @@ android {
         applicationId 'ohgo.mobile'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 10042
-        versionName "1.4.2"
+        versionCode 10043
+        versionName "1.4.3"
     }
     signingConfigs {
         debug {
