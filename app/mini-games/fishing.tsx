@@ -956,11 +956,18 @@ export default function FishingGame() {
       if (tournamentDoc.exists()) {
         const data = tournamentDoc.data();
         if (data.title && data.startDate && data.endDate) {
+          // 시작일은 그대로 사용
+          const startDate = data.startDate.toDate();
+          
+          // 종료일은 23시 59분 59초로 설정
+          const endDate = data.endDate.toDate();
+          endDate.setHours(23, 59, 59);
+          
           setTournament({
             title: data.title,
             description: data.description || '',
-            startDate: data.startDate.toDate(),
-            endDate: data.endDate.toDate(),
+            startDate: startDate,
+            endDate: endDate,
           });
           console.log('Tournament data loaded:', data.title);
         } else {
@@ -1545,11 +1552,64 @@ export default function FishingGame() {
         );
         return;
       }
+      
+      // 서버에서 현재 미끼 사용량 가져와서 검증
+      const usageSnap = await getDoc(doc(db, `users/${uuid}/baitUsage`, todayStr()));
+      const serverBaitUsed = usageSnap.exists() ? (usageSnap.data().used || 0) : 0;
+      
+      // 서버의 미끼 사용량이 로컬 상태보다 많으면 상태 업데이트
+      if (serverBaitUsed > todayBaitUsed) {
+        setTodayBaitUsed(serverBaitUsed);
+        const newBaitCount = Math.max(0, dailyBaitLimit - serverBaitUsed);
+        setBaitCount(newBaitCount);
+        
+        // 미끼가 부족한 경우 게임 시작 불가
+        if (newBaitCount <= 0) {
+          Alert.alert('미끼가 부족합니다', '오늘은 더이상 낚시할 수 없습니다!');
+          return;
+        }
+      }
     } catch (error) {
       console.error('게임 시작 시 날짜 검증 오류:', error);
       setIsDateChecking(false);
     }
-    // 이벤트 기간 체크
+    
+    // 이벤트 기간 체크 - 서버에서 최신 이벤트 정보 가져와서 검증
+    try {
+      // 서버에서 최신 이벤트 정보 가져오기
+      const tournamentDoc = await getDoc(doc(db, 'gameSettings', 'tournament'));
+      
+      if (tournamentDoc.exists()) {
+        const data = tournamentDoc.data();
+        if (data.title && data.startDate && data.endDate) {
+          // 시작일은 그대로 사용
+          const startDate = data.startDate.toDate();
+          
+          // 종료일은 23시 59분 59초로 설정
+          const endDate = data.endDate.toDate();
+          endDate.setHours(23, 59, 59);
+          
+          // 현재 시간과 비교
+          const now = new Date();
+          if (now < startDate || now > endDate) {
+            // 날짜 포맷팅
+            const formatServerDate = (date: Date) => {
+              return date.toLocaleDateString('ko-KR', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+              });
+            };
+            Alert.alert('이벤트 기간이 아닙니다', `이벤트 기간(${formatServerDate(startDate)} ~ ${formatServerDate(endDate)}) 내에만 게임에 참여할 수 있습니다.`);
+            return;
+          }
+        }
+      }
+    } catch (error) {
+      console.error('이벤트 기간 검증 오류:', error);
+    }
+    
+    // 로컬 이벤트 정보 체크 (백업)
     if (tournament) {
       const now = new Date();
       if (now < tournament.startDate || now > tournament.endDate) {
