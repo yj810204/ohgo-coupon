@@ -23,11 +23,14 @@ export default function MemberDetail() {
   const [stampCount, setStampCount] = useState(0);
   const [couponCount, setCouponCount] = useState(0);
   const [points, setPoints] = useState(0);
+  const [baitCoupons, setBaitCoupons] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingOne, setIsLoadingOne] = useState(false);
   const [isLoadingFive, setIsLoadingFive] = useState(false);
+  const [isLoadingBait, setIsLoadingBait] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isResettingPoints, setIsResettingPoints] = useState(false);
+  const [baitModalVisible, setBaitModalVisible] = useState(false);
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const [createdAt, setCreatedAt] = useState('');
@@ -70,6 +73,8 @@ export default function MemberDetail() {
         }
         // Get user points, default to 0 if not set
         setPoints(data.totalPoint || 0);
+        // Get bait coupons, default to 0 if not set
+        setBaitCoupons(data.baitCoupons || 0);
       }
   
       // 마지막 스탬프 날짜 계산
@@ -215,6 +220,57 @@ export default function MemberDetail() {
     }
   };
 
+  const handleBaitCouponButton = () => {
+    setBaitModalVisible(true);
+  };
+
+  const updateBaitCoupons = async (increment: number) => {
+    if (increment === 0) return;
+    
+    const message = increment > 0 
+      ? `${name}님의 미끼 교환권을 1개 추가하시겠습니까?` 
+      : `${name}님의 미끼 교환권을 1개 차감하시겠습니까?`;
+    
+    Alert.alert(
+      '미끼 교환권 업데이트',
+      message,
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '확인',
+          onPress: async () => {
+            setIsLoadingBait(true);
+            try {
+              const userRef = doc(db, 'users', uuid);
+              await updateDoc(userRef, { 
+                baitCoupons: (baitCoupons + increment) >= 0 ? baitCoupons + increment : 0 
+              });
+              
+              // Update local state
+              setBaitCoupons(prev => (prev + increment >= 0 ? prev + increment : 0));
+              
+              const actionText = increment > 0 ? '추가' : '차감';
+              Alert.alert('완료', `미끼 교환권이 1개 ${actionText}되었습니다.`);
+
+              if (increment > 0) {
+                await sendPushToUser({
+                  uuid,
+                  title: '미끼 교환권 업데이트',
+                  body: `${name}님, 미끼 교환권이 1개 추가되었습니다.`,
+                  data: { screen: 'fishing', uuid, name, dob },
+                });
+              }
+            } catch (err: any) {
+              Alert.alert('미끼 교환권 업데이트 실패', err.message);
+            } finally {
+              setIsLoadingBait(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleDeleteUser = async () => {
     if (targetUserIsAdmin) {
       Alert.alert('삭제 불가', '관리자는 삭제할 수 없습니다.');
@@ -310,6 +366,48 @@ export default function MemberDetail() {
           </View>
         </View>
       </Modal>
+      
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={baitModalVisible}
+        onRequestClose={() => setBaitModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{name}님의 교환권</Text>
+            
+            <View style={styles.baitButtonsContainer}>
+              <TouchableOpacity
+                style={[styles.baitButton, styles.baitAddButton]}
+                onPress={() => updateBaitCoupons(1)}
+              >
+                <Text style={styles.baitButtonText}>+</Text>
+              </TouchableOpacity>
+              
+              <View style={styles.baitCountContainer}>
+                <Text style={styles.baitCountText}>{baitCoupons}</Text>
+              </View>
+              
+              {baitCoupons > 0 && (
+                <TouchableOpacity
+                  style={[styles.baitButton, styles.baitRemoveButton]}
+                  onPress={() => updateBaitCoupons(-1)}
+                >
+                  <Text style={styles.baitButtonText}>-</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setBaitModalVisible(false)}
+            >
+              <Text style={styles.closeButtonText}>닫기</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     <View style={{ marginBottom: 12 }}>
       <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>이름:</Text>
@@ -383,44 +481,78 @@ export default function MemberDetail() {
         <Text style={styles.cardLabel}>쿠폰</Text>
         <Text style={styles.cardValue}>{couponCount}</Text>
       </TouchableOpacity>
-  
-      <View style={styles.buttonGroup}>
-        <TouchableOpacity
-          style={[styles.button, isLoading && { opacity: 0.6 }]}
-          onPress={handleAddStamp}
-          activeOpacity={0.8}
-          disabled={isLoadingOne || isLoadingFive}
-        >
-          <View style={styles.buttonContent}>
-            {isLoadingOne ? (
-              <View style={styles.loadingWrapper}>
-                <ActivityIndicator color="#fff" size="small" style={{ marginRight: 8 }} />
-                <Text style={styles.buttonText}>스탬프 적립 중...</Text>
-              </View>
-            ) : (
-              <Text style={styles.buttonText}>스탬프 +1</Text>
-            )}
-          </View>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={[styles.button, isLoading && { opacity: 0.6 }]}
-          onPress={handleAddStampFive}
-          activeOpacity={0.8}
-          disabled={isLoadingOne || isLoadingFive}
-        >
-          <View style={styles.buttonContent}>
-            {isLoadingFive ? (
-              <View style={styles.loadingWrapper}>
-                <ActivityIndicator color="#fff" size="small" style={{ marginRight: 8 }} />
-                <Text style={styles.buttonText}>스탬프 적립 중...</Text>
-              </View>
-            ) : (
-              <Text style={styles.buttonText}>스탬프 +5</Text>
-            )}
-          </View>
-        </TouchableOpacity>
 
+      <TouchableOpacity
+        style={styles.card}
+        activeOpacity={0.8}
+        onPress={() => setBaitModalVisible(true)}
+      >
+        <Text style={styles.cardLabel}>교환권</Text>
+        <Text style={styles.cardValue}>{baitCoupons}</Text>
+      </TouchableOpacity>
+
+      <View style={styles.buttonGroup}>
+        {/* 스탬프 +1, 스탬프 +5, 교환권 +1 그룹 */}
+        <View style={styles.buttonSubGroup}>
+          <TouchableOpacity
+            style={[styles.button, isLoading && { opacity: 0.6 }]}
+            onPress={handleAddStamp}
+            activeOpacity={0.8}
+            disabled={isLoadingOne || isLoadingFive}
+          >
+            <View style={styles.buttonContent}>
+              {isLoadingOne ? (
+                <View style={styles.loadingWrapper}>
+                  <ActivityIndicator color="#fff" size="small" style={{ marginRight: 8 }} />
+                  <Text style={styles.buttonText}>스탬프 적립 중...</Text>
+                </View>
+              ) : (
+                <Text style={styles.buttonText}>스탬프 +1</Text>
+              )}
+            </View>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.button, isLoading && { opacity: 0.6 }]}
+            onPress={handleAddStampFive}
+            activeOpacity={0.8}
+            disabled={isLoadingOne || isLoadingFive}
+          >
+            <View style={styles.buttonContent}>
+              {isLoadingFive ? (
+                <View style={styles.loadingWrapper}>
+                  <ActivityIndicator color="#fff" size="small" style={{ marginRight: 8 }} />
+                  <Text style={styles.buttonText}>스탬프 적립 중...</Text>
+                </View>
+              ) : (
+                <Text style={styles.buttonText}>스탬프 +5</Text>
+              )}
+            </View>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.button, { backgroundColor: '#FF9800' }, isLoadingBait && { opacity: 0.6 }]}
+            onPress={handleBaitCouponButton}
+            activeOpacity={0.8}
+            disabled={isLoadingBait}
+          >
+            <View style={styles.buttonContent}>
+              {isLoadingBait ? (
+                <View style={styles.loadingWrapper}>
+                  <ActivityIndicator color="#fff" size="small" style={{ marginRight: 8 }} />
+                  <Text style={styles.buttonText}>처리 중...</Text>
+                </View>
+              ) : (
+                <Text style={styles.buttonText}>교환권 +1</Text>
+              )}
+            </View>
+          </TouchableOpacity>
+        </View>
+        
+        {/* 구분선 추가 */}
+        <View style={styles.horizontalLine} />
+
+        {/* 관리자 메모 */}
         <TouchableOpacity
           style={[styles.button, { backgroundColor: '#8E44AD' }]}
           onPress={() =>
@@ -433,29 +565,38 @@ export default function MemberDetail() {
           <Text style={styles.buttonText}>관리자 메모</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.button, { backgroundColor: '#607D8B' }]}
-          onPress={() => {
-            router.push({
-              pathname: '/logs',
-              params: { uuid, name },
-            });
-          }}
-        >
-          <Text style={styles.buttonText}>로그 보기</Text>
-        </TouchableOpacity>
+        {/* 구분선 추가 */}
+        <View style={styles.horizontalLine} />
 
-        <TouchableOpacity
-          style={[styles.button, { backgroundColor: '#009688' }]}
-          onPress={() => {
-            router.push({
-              pathname: '/stamp-history',
-              params: { uuid, name },
-            });
-          }}
-        >
-          <Text style={styles.buttonText}>스탬프 이력</Text>
-        </TouchableOpacity>
+        {/* 로그 보기, 스탬프 이력 그룹 */}
+        <View style={styles.buttonSubGroup}>
+          <TouchableOpacity
+            style={[styles.button, { backgroundColor: '#607D8B' }]}
+            onPress={() => {
+              router.push({
+                pathname: '/logs',
+                params: { uuid, name },
+              });
+            }}
+          >
+            <Text style={styles.buttonText}>로그 보기</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.button, { backgroundColor: '#009688' }]}
+            onPress={() => {
+              router.push({
+                pathname: '/stamp-history',
+                params: { uuid, name },
+              });
+            }}
+          >
+            <Text style={styles.buttonText}>스탬프 이력</Text>
+          </TouchableOpacity>
+        </View>
+        
+        {/* 구분선 추가 */}
+        <View style={styles.horizontalLine} />
   
         <TouchableOpacity
           style={[styles.button, styles.deleteButton, isDeleting && { opacity: 0.6 }]}
@@ -521,13 +662,25 @@ const styles = StyleSheet.create({
     marginTop: 32,
     gap: 12,
   },
+  buttonSubGroup: {
+    gap: 12,
+  },
+  groupSpacer: {
+    height: 12,
+  },
+  horizontalLine: {
+    height: 1,
+    backgroundColor: '#E0E0E0',
+    marginVertical: 12,
+    width: '100%',
+  },
   buttonWrapper: {
     marginBottom: 12,
   },
   
   button: {
     backgroundColor: '#2196F3',
-    paddingVertical: 14,
+    paddingVertical: 10,
     borderRadius: 8,
     alignItems: 'center',
   },
@@ -632,5 +785,45 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#fff',
     fontFamily: 'GiantRegular',
+  },
+  // Bait coupon modal styles
+  baitCountContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  baitCountText: {
+    fontSize: 24,
+    fontFamily: 'GiantBold',
+    color: '#333',
+    paddingHorizontal: 15,
+  },
+  baitButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  baitButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  baitAddButton: {
+    backgroundColor: '#4CAF50',
+  },
+  baitRemoveButton: {
+    backgroundColor: '#F44336',
+  },
+  baitButtonText: {
+    fontSize: 24,
+    color: '#fff',
+    fontFamily: 'GiantBold',
   },
 });

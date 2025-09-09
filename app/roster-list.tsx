@@ -3,8 +3,9 @@ import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView, FlatList, Activ
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, query, getDocs, where, doc, getDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { collection, query, getDocs, where, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { db, storage } from '../firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import ViewShot from 'react-native-view-shot';
 import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system';
@@ -27,12 +28,15 @@ type RosterItem = {
 export default function RosterListScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { date, dateDisplay } = params;
+  const { date, dateDisplay, tripNumber, showPreview } = params;
 
   // Extract year, month, and day from dateDisplay
   const dateYear = dateDisplay.toString().split('년')[0];
   const dateMonth = dateDisplay.toString().split('년')[1].split('월')[0].trim();
   const dateDay = dateDisplay.toString().split('월')[1].split('일')[0].trim();
+
+  // Convert tripNumber to number (it comes as string from URL params)
+  const tripNum = tripNumber ? parseInt(tripNumber.toString()) : 1;
 
   const viewShotRef = useRef<any>(null);
 
@@ -45,9 +49,145 @@ export default function RosterListScreen() {
   const [capturedImageUri, setCapturedImageUri] = useState<string | null>(null);
   const [savingImage, setSavingImage] = useState(false);
 
+  // Function to check if a trip has already been made
+  const checkTripStatus = async () => {
+    if (!date || !tripNumber) return;
+
+    try {
+      // Check if this trip has already been confirmed
+      const tripsDocRef = doc(db, 'trips', String(date));
+      const tripsDocSnap = await getDoc(tripsDocRef);
+
+      if (tripsDocSnap.exists()) {
+        const tripKey = `trip${tripNum}`;
+        const tripData = tripsDocSnap.data()[tripKey];
+
+        if (tripData && tripData.confirmed) {
+          // This trip has already been confirmed
+          Alert.alert(
+            '알림',
+            `${dateDisplay} ${tripNum}항차는 이미 출항 확정되었습니다.`,
+            [
+              {
+                text: '확인',
+                onPress: () => router.back()
+              }
+            ]
+          );
+          return true;
+        }
+      }
+
+      return false;
+    } catch (error) {
+      console.error('Error checking trip status:', error);
+      return false;
+    }
+  };
+
   useEffect(() => {
-    loadRosterData();
+    const init = async () => {
+      // If showPreview is true, we want to show the image preview for a confirmed trip
+      if (showPreview === 'true') {
+        await loadRosterData();
+        captureAndShowPreview();
+      } else {
+        const tripAlreadyMade = await checkTripStatus();
+        if (!tripAlreadyMade) {
+          loadRosterData();
+        }
+      }
+    };
+
+    init();
   }, [date]);
+
+  // Function to capture and show the image preview for confirmed trips
+  const captureAndShowPreview = async () => {
+    try {
+      setSavingImage(true);
+
+      // Check if there's already an image URL for this trip
+      if (date && tripNumber) {
+        const tripsDocRef = doc(db, 'trips', String(date));
+        const tripsDocSnap = await getDoc(tripsDocRef);
+
+        if (tripsDocSnap.exists()) {
+          const tripKey = `trip${tripNum}`;
+          const tripData = tripsDocSnap.data()[tripKey];
+
+          if (tripData && tripData.rosterImageUrl) {
+            // If there's already an image URL, use it
+            setCapturedImageUri(tripData.rosterImageUrl);
+            setImagePreviewVisible(true);
+            setSavingImage(false);
+            return;
+          }
+        }
+      }
+
+      // If no existing image, capture a new one
+      // Wait a moment for the roster data to be rendered
+      setTimeout(async () => {
+        // Capture the view as an image
+        if (viewShotRef.current) {
+          const uri = await viewShotRef.current.capture();
+          setCapturedImageUri(uri);
+          setImagePreviewVisible(true);
+
+          try {
+            // Upload the image to Firebase Storage
+            const response = await fetch(uri);
+            const blob = await response.blob();
+
+            // Create a reference to the storage location
+            const imagePath = `rosters/${date}/trip${tripNum}.jpg`;
+            const storageRef = ref(storage, imagePath);
+
+            // Upload the image
+            await uploadBytes(storageRef, blob);
+
+            // Get the download URL
+            const downloadURL = await getDownloadURL(storageRef);
+
+            // Save the image URL to the trip document
+            const tripsDocRef = doc(db, 'trips', String(date));
+            const tripsDocSnap = await getDoc(tripsDocRef);
+
+            const tripKey = `trip${tripNum}`;
+
+            if (tripsDocSnap.exists()) {
+              const tripData = tripsDocSnap.data()[tripKey] || {};
+
+              // Update the trip data with the image URL
+              await updateDoc(tripsDocRef, {
+                [tripKey]: {
+                  ...tripData,
+                  rosterImageUrl: downloadURL,
+                  rosterImagePath: imagePath
+                }
+              });
+            } else {
+              // Create a new document if it doesn't exist
+              await setDoc(tripsDocRef, {
+                [tripKey]: {
+                  rosterImageUrl: downloadURL,
+                  rosterImagePath: imagePath
+                }
+              });
+            }
+          } catch (error) {
+            console.error('Error saving preview image to Firebase:', error);
+          }
+        }
+        setSavingImage(false);
+      }, 1000);
+    } catch (error) {
+      console.error('Error capturing image:', error);
+      Alert.alert('오류', '이미지 생성 중 오류가 발생했습니다.');
+      setSavingImage(false);
+    }
+  };
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -61,6 +201,37 @@ export default function RosterListScreen() {
     }
   };
 
+  // Function to ensure captains are added to attendance
+  const updateAttendanceWithCaptains = async (dateStr: string, captainIds: string[], existingMemberIds: string[] = []) => {
+    try {
+      const attendanceRef = doc(db, 'attendance', dateStr);
+      const attendanceSnap = await getDoc(attendanceRef);
+
+      // Create a set of unique member IDs (combining existing members and captains)
+      const uniqueMemberIds = new Set([...existingMemberIds, ...captainIds]);
+      const updatedMemberIds = Array.from(uniqueMemberIds);
+
+      if (attendanceSnap.exists()) {
+        // Update existing attendance document
+        await updateDoc(attendanceRef, {
+          members: updatedMemberIds,
+          tripNumber: parseInt(tripNumber as string) || 1
+        });
+      } else {
+        // Create new attendance document
+        await setDoc(attendanceRef, {
+          members: updatedMemberIds,
+          tripNumber: parseInt(tripNumber as string) || 1
+        });
+      }
+
+      return updatedMemberIds;
+    } catch (error) {
+      console.error('Error updating attendance with captains:', error);
+      return existingMemberIds;
+    }
+  };
+
   const loadRosterData = async () => {
     if (!date) return;
 
@@ -71,16 +242,21 @@ export default function RosterListScreen() {
       const crewIds = crewMembers.map(member => member.uuid);
       const captainIds = crewMembers.filter(member => member.role === 'captain').map(captain => captain.uuid);
       const sailorIds = crewMembers.filter(member => member.role === 'sailor').map(sailor => sailor.uuid);
-      
+
       // Get the attendance document for the specified date
       const attendanceRef = doc(db, 'attendance', String(date));
       const attendanceSnap = await getDoc(attendanceRef);
 
       const rosterData: RosterItem[] = [];
-      const memberIds: string[] = attendanceSnap.exists() && attendanceSnap.data().members 
-        ? attendanceSnap.data().members 
-        : [];
-      
+      let memberIds: string[] = attendanceSnap.exists() && attendanceSnap.data().members
+          ? attendanceSnap.data().members
+          : [];
+
+      // Ensure captains are added to attendance even if they're the only ones present
+      if (captainIds.length > 0) {
+        memberIds = await updateAttendanceWithCaptains(String(date), captainIds, memberIds);
+      }
+
       // Format date from YYYYMMDD to YYYY-MM-DD
       const formatDate = (dateStr: string): string => {
         if (!dateStr || dateStr.length !== 8) return dateStr;
@@ -91,18 +267,18 @@ export default function RosterListScreen() {
       for (const crewMember of crewMembers) {
         const userRef = doc(db, 'users', crewMember.uuid);
         const userSnap = await getDoc(userRef);
-        
+
         if (userSnap.exists()) {
           const userData = userSnap.data();
-          
+
           // Check if crew member has boarding info
           const boardingInfoRef = doc(db, 'users', crewMember.uuid, 'boarding', 'info');
           const boardingInfoSnap = await getDoc(boardingInfoRef);
-          
+
           const hasRoster = boardingInfoSnap.exists();
           const isCaptain = crewMember.role === 'captain';
           const isSailor = crewMember.role === 'sailor';
-          
+
           let rosterInfo = {
             id: crewMember.uuid,
             name: userData.name || crewMember.name || '',
@@ -116,7 +292,7 @@ export default function RosterListScreen() {
             isSailor: isSailor,
             role: crewMember.role
           };
-          
+
           if (hasRoster) {
             const data = boardingInfoSnap.data();
             rosterInfo = {
@@ -129,7 +305,7 @@ export default function RosterListScreen() {
               address: data.address || '',
             };
           }
-          
+
           rosterData.push(rosterInfo);
         }
       }
@@ -139,7 +315,7 @@ export default function RosterListScreen() {
         for (const memberId of memberIds) {
           // Skip if this member is a captain or sailor (already added)
           if (crewIds.includes(memberId)) continue;
-          
+
           // Get user's basic info
           const userRef = doc(db, 'users', memberId);
           const userSnap = await getDoc(userRef);
@@ -152,7 +328,7 @@ export default function RosterListScreen() {
             const boardingInfoSnap = await getDoc(boardingInfoRef);
 
             const hasRoster = boardingInfoSnap.exists();
-            
+
             let rosterInfo = {
               id: memberId,
               name: userData.name || '',
@@ -239,6 +415,25 @@ export default function RosterListScreen() {
 
       setSavingImage(true);
 
+      // Check if there's already an image URL for this trip
+      if (date && tripNumber) {
+        const tripsDocRef = doc(db, 'trips', String(date));
+        const tripsDocSnap = await getDoc(tripsDocRef);
+
+        if (tripsDocSnap.exists()) {
+          const tripKey = `trip${tripNum}`;
+          const tripData = tripsDocSnap.data()[tripKey];
+
+          if (tripData && tripData.rosterImageUrl) {
+            // If there's already an image URL, use it
+            setCapturedImageUri(tripData.rosterImageUrl);
+            setImagePreviewVisible(true);
+            setSavingImage(false);
+            return;
+          }
+        }
+      }
+
       // Capture the view as an image
       if (viewShotRef.current) {
         const uri = await viewShotRef.current.capture();
@@ -255,7 +450,7 @@ export default function RosterListScreen() {
 
   const saveToGallery = async () => {
     try {
-      if (!capturedImageUri) return;
+      if (!capturedImageUri || !date || !tripNumber) return;
 
       setSavingImage(true);
 
@@ -263,11 +458,52 @@ export default function RosterListScreen() {
       const asset = await MediaLibrary.createAssetAsync(capturedImageUri);
       await MediaLibrary.createAlbumAsync('OhGo', asset, false);
 
-      Alert.alert('성공', '명부 이미지가 갤러리에 저장되었습니다.');
+      // Upload the image to Firebase Storage
+      const response = await fetch(capturedImageUri);
+      const blob = await response.blob();
+
+      // Create a reference to the storage location
+      const imagePath = `rosters/${date}/trip${tripNum}.jpg`;
+      const storageRef = ref(storage, imagePath);
+
+      // Upload the image
+      await uploadBytes(storageRef, blob);
+
+      // Get the download URL
+      const downloadURL = await getDownloadURL(storageRef);
+
+      // Save the image URL to the trip document
+      const tripsDocRef = doc(db, 'trips', String(date));
+      const tripsDocSnap = await getDoc(tripsDocRef);
+
+      const tripKey = `trip${tripNum}`;
+
+      if (tripsDocSnap.exists()) {
+        const tripData = tripsDocSnap.data()[tripKey] || {};
+
+        // Update the trip data with the image URL
+        await updateDoc(tripsDocRef, {
+          [tripKey]: {
+            ...tripData,
+            rosterImageUrl: downloadURL,
+            rosterImagePath: imagePath
+          }
+        });
+      } else {
+        // Create a new document if it doesn't exist
+        await setDoc(tripsDocRef, {
+          [tripKey]: {
+            rosterImageUrl: downloadURL,
+            rosterImagePath: imagePath
+          }
+        });
+      }
+
+      Alert.alert('성공', '명부 이미지가 갤러리와 서버에 저장되었습니다.');
       setImagePreviewVisible(false);
     } catch (error) {
-      console.error('Error saving to gallery:', error);
-      Alert.alert('오류', '갤러리에 저장하는 중 오류가 발생했습니다.');
+      console.error('Error saving image:', error);
+      Alert.alert('오류', '이미지 저장 중 오류가 발생했습니다.');
     } finally {
       setSavingImage(false);
     }
@@ -276,7 +512,7 @@ export default function RosterListScreen() {
   const renderRosterItem = ({ item }: { item: RosterItem }) => (
       <TouchableOpacity
           style={[
-            styles.rosterItem, 
+            styles.rosterItem,
             item.isCaptain ? styles.captainRosterItem : null,
             item.isSailor ? styles.sailorRosterItem : null
           ]}
@@ -438,13 +674,17 @@ export default function RosterListScreen() {
                   <Text style={styles.boardingListDateMonth}>{dateMonth}</Text>
                   <Text style={styles.boardingListDateDay}>{dateDay}</Text>
                 </View>
-                <ScrollView style={styles.boardingListScroll}>
-                  {rosterItems.map((item, index) => (
-                      <View key={item.id} style={[
-                        styles.boardingListItem,
-                        item.isCaptain ? styles.boardingListCaptainItem : null,
-                        item.isSailor ? styles.boardingListSailorItem : null
-                      ]}>
+                <View style={styles.boardingListScroll}>
+                  {rosterItems.slice(0, 20).map((item, index) => (
+                      <View
+                          key={item.id}
+                          style={[
+                            styles.boardingListItem,
+                            { top: index * 50.5 },
+                            item.isCaptain ? styles.boardingListCaptainItem : null,
+                            item.isSailor ? styles.boardingListSailorItem : null
+                          ]}
+                      >
                         <Text style={styles.boardingListNumber}>{index + 1}</Text>
                         <Text style={[
                           styles.boardingListName,
@@ -462,7 +702,7 @@ export default function RosterListScreen() {
                         <Text style={styles.boardingListEmergency}>{item.emergency}</Text>
                       </View>
                   ))}
-                </ScrollView>
+                </View>
               </View>
             </View>
           </ViewShot>
@@ -470,7 +710,7 @@ export default function RosterListScreen() {
 
         <View style={styles.dateContainer}>
           <View style={styles.dateTextContainer}>
-            <Text style={styles.dateTextYear}>{dateDisplay}</Text>
+            <Text style={styles.dateTextYear}>{dateDisplay} {tripNum}항차</Text>
           </View>
         </View>
 
@@ -503,6 +743,13 @@ export default function RosterListScreen() {
               />
               <View style={styles.buttonContainer}>
                 <TouchableOpacity
+                    style={styles.previousButton}
+                    onPress={() => router.back()}
+                >
+                  <Text style={styles.buttonText}>이전</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
                     style={styles.addButton}
                     onPress={() => {
                       // Navigate to a form or modal to add a member manually
@@ -513,7 +760,8 @@ export default function RosterListScreen() {
                           dateDisplay,
                           dateYear,
                           dateMonth,
-                          dateDay
+                          dateDay,
+                          tripNumber: tripNum
                         }
                       });
                     }}
@@ -534,6 +782,7 @@ export default function RosterListScreen() {
                           dateYear,
                           dateMonth,
                           dateDay,
+                          tripNumber: tripNum,
                           rosterItems: rosterItemsJson
                         }
                       });
@@ -568,7 +817,7 @@ const styles = StyleSheet.create({
   dateTextContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    alignItems: 'center',
+    alignItems: 'center'
   },
   dateTextYear: {
     fontSize: 18,
@@ -614,7 +863,6 @@ const styles = StyleSheet.create({
   },
   listContent: {
     padding: 16,
-    paddingBottom: 100, // Add extra padding at the bottom for the buttons
   },
   rosterItem: {
     flexDirection: 'row',
@@ -706,10 +954,8 @@ const styles = StyleSheet.create({
     fontFamily: "GiantRegular"
   },
   buttonContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     backgroundColor: 'white',
     padding: 16,
     borderTopWidth: 1,
@@ -720,18 +966,41 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 5,
   },
+  buttonContainerNoBorder: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    backgroundColor: 'white',
+    padding: 16,
+    paddingTop: 0, // Remove padding at the top to reduce spacing
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 5,
+  },
   addButton: {
+    flex: 1,
     backgroundColor: '#1e88e5',
-    paddingVertical: 14,
+    paddingVertical: 10,
     borderRadius: 8,
     alignItems: 'center',
-    marginBottom: 12,
+    marginHorizontal: 8,
   },
   nextButton: {
+    flex: 1,
     backgroundColor: '#4caf50',
-    paddingVertical: 14,
+    paddingVertical: 10,
     borderRadius: 8,
     alignItems: 'center',
+    marginLeft: 8,
+  },
+  previousButton: {
+    flex: 1,
+    backgroundColor: '#f44336',
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginRight: 8,
   },
   buttonText: {
     color: 'white',
@@ -810,7 +1079,7 @@ const styles = StyleSheet.create({
   },
   previewImage: {
     width: '100%',
-    height: 500,
+    // height: 500,
     marginVertical: 16,
     borderRadius: 8,
   },
@@ -852,34 +1121,52 @@ const styles = StyleSheet.create({
     padding: 40,
   },
   boardingListDateContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: 50,
     flexDirection: 'row',
-    marginLeft: 197,
-    marginBottom: 109,
     alignItems: 'center'
   },
   boardingListDateYear: {
+    position: 'absolute',
+    left: 197,
+    top: 15,
     fontSize: 18,
     color: '#000',
+    lineHeight: 24,
   },
   boardingListDateMonth: {
+    position: 'absolute',
+    left: 237,
+    top: 15,
     fontSize: 18,
     color: '#000',
-    marginLeft: 40
+    lineHeight: 24,
   },
   boardingListDateDay: {
+    position: 'absolute',
+    left: 277,
+    top: 15,
     fontSize: 18,
     color: '#000',
-    marginLeft: 40
+    lineHeight: 24,
   },
   boardingListScroll: {
-    flex: 1,
+    position: 'absolute',
+    top: 109,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   boardingListItem: {
-    flexDirection: 'row',
-    // marginBottom: 0,
-    paddingHorizontal: 20,
-    marginLeft: 20,
-    height: 50.5
+    position: 'absolute',
+    left: 0,
+    height: 50.5,
+    width: '100%',
+    borderWidth: 0.5,
+    borderColor: '#ccc'
   },
   boardingListCaptainItem: {
     backgroundColor: '#e3f2fd', // Light blue background for captains
@@ -888,16 +1175,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#e8f5e9', // Light green background for sailors
   },
   boardingListNumber: {
+    position: 'absolute',
+    left: 20,
+    top: 10,
     width: 50,
     fontSize: 18,
     color: '#000',
-    paddingTop: 10,
+    lineHeight: 24,
   },
   boardingListName: {
+    position: 'absolute',
+    left: 70,
+    top: 10,
     width: 137,
     fontSize: 18,
     color: '#000',
-    paddingTop: 10,
+    lineHeight: 24,
   },
   boardingListCaptainText: {
     fontWeight: 'bold',
@@ -908,32 +1201,48 @@ const styles = StyleSheet.create({
     color: '#4caf50',
   },
   boardingListBirth: {
+    position: 'absolute',
+    left: 207,
+    top: 10,
     width: 145,
     fontSize: 18,
     color: '#000',
-    paddingTop: 10,
+    lineHeight: 24,
   },
   boardingListGender: {
+    position: 'absolute',
+    left: 352,
+    top: 10,
     width: 55,
     fontSize: 18,
     color: '#000',
-    paddingTop: 10,
+    lineHeight: 24,
   },
   boardingListPhone: {
+    position: 'absolute',
+    left: 637,
+    top: 10,
     width: 140,
     fontSize: 16,
     color: '#000',
-    paddingTop: 10
+    lineHeight: 22,
   },
   boardingListEmergency: {
+    position: 'absolute',
+    left: 777,
+    top: 10,
     width: 140,
     fontSize: 16,
     color: '#000',
-    paddingTop: 10
+    lineHeight: 22,
   },
   boardingListAddress: {
+    position: 'absolute',
+    left: 407,
+    top: 10,
     width: 230,
     fontSize: 16,
-    color: '#000'
+    color: '#000',
+    lineHeight: 22,
   },
 });

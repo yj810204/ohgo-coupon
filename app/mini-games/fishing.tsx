@@ -677,6 +677,7 @@ export default function FishingGame() {
   // ... state 정의(동일, 위 코드 참고) ...
   const [fishes, setFishes] = useState<Fish[]>([]); // 물고기 데이터
   const [fishLoading, setFishLoading] = useState(true); // 물고기 데이터 로딩 상태
+  const [baitLoading, setBaitLoading] = useState(true); // 미끼 데이터 로딩 상태
   const [dailyBaitLimit, setDailyBaitLimit] = useState(5); // 하루 미끼 제한 개수
   const [todayBaitUsed, setTodayBaitUsed] = useState(0); // 오늘 사용한 미끼 개수
   const [baitCoupons, setBaitCoupons] = useState(0); // 보유한 미끼 교환권 개수
@@ -748,6 +749,14 @@ export default function FishingGame() {
   const [serverDate, setServerDate] = useState<string>('');
   const [isDateValid, setIsDateValid] = useState<boolean>(true);
   const [isDateChecking, setIsDateChecking] = useState<boolean>(true);
+  const [isStartButtonDisabled, setIsStartButtonDisabled] = useState<boolean>(false);
+
+  // 게임 상태가 'result'로 변경되면 시작 버튼 다시 활성화
+  useEffect(() => {
+    if (state === 'result') {
+      setIsStartButtonDisabled(false);
+    }
+  }, [state]);
 
   // 특별 버튼 애니메이션
   const specialButtonAnim = useRef(new Animated.Value(1)).current;
@@ -1230,6 +1239,9 @@ export default function FishingGame() {
     if (!uuid) return;
     (async () => {
       console.log('미니게임 화면 접속: 물고기 데이터 로딩 시작');
+      
+      // 미끼 데이터 로딩 시작
+      setBaitLoading(true);
 
       // 이벤트 정보 가져오기
       await fetchTournamentData();
@@ -1281,6 +1293,9 @@ export default function FishingGame() {
         const userData = userSnap.data();
         setBaitCoupons(userData.baitCoupons || 0);
       }
+      
+      // 미끼 데이터 로딩 완료
+      setBaitLoading(false);
     })();
   }, [uuid]);
 
@@ -1521,16 +1536,22 @@ export default function FishingGame() {
   }
 
   async function startFishing() {
+    // 시작 버튼 비활성화
+    setIsStartButtonDisabled(true);
+    
     if (!uuid) {
       Alert.alert('오류', '회원 정보가 없습니다.');
+      setIsStartButtonDisabled(false); // 오류 발생 시 버튼 다시 활성화
       return;
     }
     if (baitCount <= 0) {
       Alert.alert('미끼가 부족합니다', '오늘은 더이상 낚시할 수 없습니다!');
+      setIsStartButtonDisabled(false); // 오류 발생 시 버튼 다시 활성화
       return;
     }
     if (fishes.length === 0) {
       Alert.alert('물고기 데이터가 없습니다!');
+      setIsStartButtonDisabled(false); // 오류 발생 시 버튼 다시 활성화
       return;
     }
     
@@ -1550,6 +1571,7 @@ export default function FishingGame() {
           '디바이스의 날짜와 서버의 날짜가 일치하지 않아 게임을 시작할 수 없습니다. 디바이스의 날짜와 시간 설정을 확인해주세요.',
           [{ text: '확인', style: 'default' }]
         );
+        setIsStartButtonDisabled(false); // 오류 발생 시 버튼 다시 활성화
         return;
       }
       
@@ -1566,12 +1588,14 @@ export default function FishingGame() {
         // 미끼가 부족한 경우 게임 시작 불가
         if (newBaitCount <= 0) {
           Alert.alert('미끼가 부족합니다', '오늘은 더이상 낚시할 수 없습니다!');
+          setIsStartButtonDisabled(false); // 오류 발생 시 버튼 다시 활성화
           return;
         }
       }
     } catch (error) {
       console.error('게임 시작 시 날짜 검증 오류:', error);
       setIsDateChecking(false);
+      setIsStartButtonDisabled(false); // 오류 발생 시 버튼 다시 활성화
     }
     
     // 이벤트 기간 체크 - 서버에서 최신 이벤트 정보 가져와서 검증
@@ -1601,12 +1625,14 @@ export default function FishingGame() {
               });
             };
             Alert.alert('이벤트 기간이 아닙니다', `이벤트 기간(${formatServerDate(startDate)} ~ ${formatServerDate(endDate)}) 내에만 게임에 참여할 수 있습니다.`);
+            setIsStartButtonDisabled(false); // 오류 발생 시 버튼 다시 활성화
             return;
           }
         }
       }
     } catch (error) {
       console.error('이벤트 기간 검증 오류:', error);
+      setIsStartButtonDisabled(false); // 오류 발생 시 버튼 다시 활성화
     }
     
     // 로컬 이벤트 정보 체크 (백업)
@@ -1614,6 +1640,7 @@ export default function FishingGame() {
       const now = new Date();
       if (now < tournament.startDate || now > tournament.endDate) {
         Alert.alert('이벤트 기간이 아닙니다', `이벤트 기간(${formatTournamentPeriod()}) 내에만 게임에 참여할 수 있습니다.`);
+        setIsStartButtonDisabled(false); // 오류 발생 시 버튼 다시 활성화
         return;
       }
     }
@@ -2165,8 +2192,9 @@ export default function FishingGame() {
                       };
 
                       const isTournamentActive = isWithinTournamentPeriod();
-                      // 날짜 검증 중이거나 날짜가 유효하지 않으면 버튼 비활성화
-                      const buttonDisabled = baitCount <= 0 || !isTournamentActive || isDateChecking || !isDateValid;
+                      // 날짜 검증 중이거나 날짜가 유효하지 않거나 미끼 데이터 로딩 중이면 버튼 비활성화
+                      // 시작 버튼을 누른 후 게임이 시작되기 전까지 버튼 비활성화 (더블클릭 방지)
+                      const buttonDisabled = baitLoading || baitCount <= 0 || !isTournamentActive || isDateChecking || !isDateValid || isStartButtonDisabled;
 
                       return (
                         <TouchableOpacity
@@ -2183,9 +2211,11 @@ export default function FishingGame() {
                               ? "날짜 확인 중..." 
                               : !isDateValid 
                                 ? "날짜 설정을 확인해주세요." 
-                                : isTournamentActive
-                                  ? `남은 미끼: ${baitCount}개`
-                                  : "이벤트 기간이 아닙니다."}
+                                : baitLoading
+                                  ? "미끼 정보 로딩 중..."
+                                  : isTournamentActive
+                                    ? `남은 미끼: ${baitCount}개`
+                                    : "이벤트 기간이 아닙니다."}
                           </Text>
                         </TouchableOpacity>
                       );

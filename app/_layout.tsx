@@ -15,6 +15,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/firebase';
 import Constants from 'expo-constants';
 import { ActionSheetProvider } from '@expo/react-native-action-sheet';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 Notifications.addNotificationReceivedListener(async (notification) => {
   const title = notification.request.content.title || '';
@@ -203,49 +204,51 @@ export default function TabLayout() {
   }
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <ActionSheetProvider>
-        <SafeAreaView style={styles.safeArea} edges={['top', 'bottom', 'left', 'right']}>
-          <Stack
-            key={`stack-${isAdmin}`}
-            screenOptions={({ route }) => ({
-              header: () => (
-                <CustomHeader
-                  title={getTitle(route?.name)}
-                  routeName={route.name}
-                  isAdmin={isAdmin} // ✅ isAdmin 전달
-                />
-              ),
-            })}
-          >
-            <Stack.Screen name="index" />
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <ActionSheetProvider>
+          <SafeAreaView style={styles.safeArea} edges={['top', 'bottom', 'left', 'right']}>
+            <Stack
+              key={`stack-${isAdmin}`}
+              screenOptions={({ route }) => ({
+                header: () => (
+                  <CustomHeader
+                    title={getTitle(route?.name)}
+                    routeName={route.name}
+                    isAdmin={isAdmin} // ✅ isAdmin 전달
+                  />
+                ),
+              })}
+            >
+              <Stack.Screen name="index" />
 
-            <Stack.Screen name="+not-found" />
-            <Stack.Screen name="admin-push" />
-            <Stack.Screen name="admin" />
-            <Stack.Screen name="admin-main" />
-            <Stack.Screen name="boarding-form" />
-            <Stack.Screen name="coupons" />
+              <Stack.Screen name="+not-found" />
+              <Stack.Screen name="admin-push" />
+              <Stack.Screen name="admin" />
+              <Stack.Screen name="admin-main" />
+              <Stack.Screen name="boarding-form" />
+              <Stack.Screen name="coupons" />
 
-            <Stack.Screen name="login" />
-            <Stack.Screen name="logs" />
-            <Stack.Screen name="member-detail" />
-            <Stack.Screen name="memo" />
-            <Stack.Screen name="notification-history" />
-            <Stack.Screen name="qr-scan" />
-            <Stack.Screen name="settings" />
-            <Stack.Screen name="stamp-history" />
-            <Stack.Screen name="stamp" />
+              <Stack.Screen name="login" />
+              <Stack.Screen name="logs" />
+              <Stack.Screen name="member-detail" />
+              <Stack.Screen name="memo" />
+              <Stack.Screen name="notification-history" />
+              <Stack.Screen name="qr-scan" />
+              <Stack.Screen name="settings" />
+              <Stack.Screen name="stamp-history" />
+              <Stack.Screen name="stamp" />
 
-            <Stack.Screen name="mini-games/fishing" />
-            <Stack.Screen name="mini-games/ranking" />
-            <Stack.Screen name="today-roster" />
-            <Stack.Screen name="roster-list" />
-          </Stack>
-          <ExpoStatusBar style="auto" />
-        </SafeAreaView>
-      </ActionSheetProvider>
-    </ThemeProvider>
+              <Stack.Screen name="mini-games/fishing" />
+              <Stack.Screen name="mini-games/ranking" />
+              <Stack.Screen name="today-roster" />
+              <Stack.Screen name="roster-list" />
+            </Stack>
+            <ExpoStatusBar style="auto" />
+          </SafeAreaView>
+        </ActionSheetProvider>
+      </ThemeProvider>
+    </GestureHandlerRootView>
   );
 
   function getTitle(routeName?: string): string {
@@ -275,6 +278,7 @@ export default function TabLayout() {
       'today-roster': '승선 명부',
       'roster-list': '승선 명부',
       'location-time-selection': '승선 명부',
+      'roster-preview': '승선 명부',
     };
     return titles[routeName ?? ''] ?? '';
   }

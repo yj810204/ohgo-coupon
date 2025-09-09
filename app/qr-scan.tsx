@@ -8,7 +8,7 @@ import { Alert, StyleSheet, Text, View } from 'react-native';
 import { findCaptains } from '../utils/find-captains';
 import { sendPushToUser } from '../utils/send-push';
 import { addStamp } from '../utils/stamp-service';
-import { doc, getDoc, updateDoc, increment, collection, setDoc, arrayUnion, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, increment, collection, setDoc, arrayUnion, Timestamp, runTransaction } from 'firebase/firestore';
 import { db } from '../firebase';
 import * as Location from 'expo-location';
 
@@ -147,24 +147,32 @@ export default function QRScanScreen() {
       if (data === 'OHGO-STAMP-BOAT19033326262005') {
         try {
           await withTimeout(addStamp(String(uuid)), 5000);
-          
-          // 미끼 교환권 발행
-          try {
+
+          // 이 방식을 사용하면 여러 작업을 안전하게 한 번에 처리할 수 있습니다.
+          await runTransaction(db, async (transaction) => {
+            const today = new Date().toISOString().split('T')[0]; // 'YYYY-MM-DD' 형식
+
             const userRef = doc(db, 'users', String(uuid));
-            await updateDoc(userRef, {
-              baitCoupons: increment(1)
+            const couponLogRef = doc(db, `users/${uuid}/baitCouponLogs`, today);
+            const attendanceRef = doc(db, 'attendance', today);
+
+            // 1. 미끼 교환권 1장 지급
+            transaction.update(userRef, { baitCoupons: increment(1) });
+
+            // 2. 교환권 지급 로그(영수증) 생성
+            transaction.set(couponLogRef, {
+              awardedAt: new Date(),
+              reason: 'QR Scan Stamp',
             });
-            console.log('게임미끼 교환권이 발행되었습니다.');
-          } catch (error) {
-            console.error('미끼 교환권 발행 오류:', error);
-          }
-          
-          // 출석 명부에 회원 추가
-          try {
-            await addMemberToAttendanceList(uuid);
-          } catch (error) {
-            console.error('출석 명부 추가 오류:', error);
-          }
+
+            // 3. 승선 명부에 회원 추가 (기존 addMemberToAttendanceList 함수와 동일한 로직)
+            transaction.set(attendanceRef,
+                { members: arrayUnion(String(uuid)) }, // arrayUnion을 사용하면 중복 추가 방지
+                { merge: true }
+            );
+          });
+
+          console.log('✅ 스탬프 관련 모든 작업이 트랜잭션으로 성공적으로 처리되었습니다.');
           
           await handleRequestToCaptains(name, uuid, dob);
           return showMessageAndBack(
@@ -230,10 +238,13 @@ return (
 // ✅ 출석 명부에 회원 추가
 const addMemberToAttendanceList = async (uuid: string | string[]) => {
   try {
-    // 현재 날짜 구하기 (YYYY-MM-DD 형식)
-    const today = new Date();
-    const dateString = today.toISOString().split('T')[0];
-    
+    // 한국 시간으로 현재 날짜와 시간 가져오기
+    const now = new Date();
+    const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000)); // UTC+9
+
+    // YYYY-MM-DD 형식으로 변환 (한국 시간 기준)
+    const dateString = koreaTime.toISOString().split('T')[0];
+
     // 회원 정보 확인
     const userRef = doc(db, 'users', String(uuid));
     const userSnap = await getDoc(userRef);
@@ -250,7 +261,7 @@ const addMemberToAttendanceList = async (uuid: string | string[]) => {
     await setDoc(
       attendanceRef, 
       { 
-        date: Timestamp.fromDate(today),
+        date: Timestamp.fromDate(koreaTime),
         members: arrayUnion(String(uuid)),
         updatedAt: Timestamp.now()
       }, 

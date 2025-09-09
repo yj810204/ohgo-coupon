@@ -1,7 +1,7 @@
 export default {
   name: '오고피씽',
   slug: 'ohgo-coupon',
-  version: '1.4.3',
+  version: '1.4.4',
   orientation: 'portrait',
   icon: './assets/images/icon.png',
   scheme: 'ohgocoupon',
@@ -10,7 +10,7 @@ export default {
   ios: {
     supportsTablet: true,
     bundleIdentifier: 'ohgo.mobile',
-    buildNumber: '10043',
+    buildNumber: '10044',
     googleServicesFile: './ios/GoogleService-Info.plist', // ✅ Firebase 연동을 위한 추가
     infoPlist: {
       NSCameraUsageDescription:
@@ -33,7 +33,7 @@ export default {
       backgroundColor: '#000000',
     },
     edgeToEdgeEnabled: true,
-    versionCode: 10043,
+    versionCode: 10044,
     package: 'ohgo.mobile',
     googleServicesFile: './google-services.json', // ✅ Firebase 연동을 위한 추가
     permissions: [

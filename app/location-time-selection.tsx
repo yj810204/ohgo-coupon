@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView, ActivityIndicator, Modal, Alert, ScrollView, Image } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView, ActivityIndicator, Alert, ScrollView, Image } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Picker } from '@react-native-picker/picker';
-import { collection, doc, getDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import ViewShot from 'react-native-view-shot';
 import * as MediaLibrary from 'expo-media-library';
+import * as FileSystem from 'expo-file-system';
 
 type RosterItem = {
   id: string;
@@ -31,7 +32,6 @@ export default function LocationTimeSelectionScreen() {
   const [locations, setLocations] = useState<string[]>([]);
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
   const [selectedTime, setSelectedTime] = useState<string>('12');
-  const [imagePreviewVisible, setImagePreviewVisible] = useState(false);
   const [capturedImageUri, setCapturedImageUri] = useState<string | null>(null);
   const [savingImage, setSavingImage] = useState(false);
   const [rosterItems, setRosterItems] = useState<RosterItem[]>([]);
@@ -46,18 +46,63 @@ export default function LocationTimeSelectionScreen() {
   // Generate hours for the picker
   const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
 
-  useEffect(() => {
-    loadLocations();
+  // Function to check if a trip has already been made
+  const checkTripStatus = async () => {
+    if (!date || !params.tripNumber) return false;
     
-    // Parse roster items from JSON string
-    if (rosterItemsJson) {
-      try {
-        const parsedRosterItems = JSON.parse(rosterItemsJson as string) as RosterItem[];
-        setRosterItems(parsedRosterItems);
-      } catch (error) {
-        console.error('Error parsing roster items:', error);
+    try {
+      // Check if this trip has already been confirmed
+      const tripsDocRef = doc(db, 'trips', String(date));
+      const tripsDocSnap = await getDoc(tripsDocRef);
+      
+      const tripNum = parseInt(params.tripNumber as string) || 1;
+      
+      if (tripsDocSnap.exists()) {
+        const tripKey = `trip${tripNum}`;
+        const tripData = tripsDocSnap.data()[tripKey];
+        
+        if (tripData && tripData.confirmed) {
+          // This trip has already been confirmed
+          Alert.alert(
+            '알림',
+            `${dateDisplay} ${tripNum}항차는 이미 출항 확정되었습니다.`,
+            [
+              {
+                text: '확인',
+                onPress: () => router.back()
+              }
+            ]
+          );
+          return true;
+        }
       }
+      
+      return false;
+    } catch (error) {
+      console.error('Error checking trip status:', error);
+      return false;
     }
+  };
+
+  useEffect(() => {
+    const init = async () => {
+      const tripAlreadyMade = await checkTripStatus();
+      if (!tripAlreadyMade) {
+        loadLocations();
+        
+        // Parse roster items from JSON string
+        if (rosterItemsJson) {
+          try {
+            const parsedRosterItems = JSON.parse(rosterItemsJson as string) as RosterItem[];
+            setRosterItems(parsedRosterItems);
+          } catch (error) {
+            console.error('Error parsing roster items:', error);
+          }
+        }
+      }
+    };
+    
+    init();
   }, []);
 
   const loadLocations = async () => {
@@ -131,8 +176,48 @@ export default function LocationTimeSelectionScreen() {
     return true;
   };
 
+  // Function to update attendance with location and time
+  const updateAttendanceWithLocationAndTime = async () => {
+    try {
+      if (!date) {
+        console.error('No date provided for attendance update');
+        return false;
+      }
+
+      const attendanceRef = doc(db, 'attendance', String(date));
+      const attendanceSnap = await getDoc(attendanceRef);
+      
+      const tripNum = parseInt(params.tripNumber as string) || 1;
+      
+      if (attendanceSnap.exists()) {
+        // Update existing attendance document
+        await updateDoc(attendanceRef, {
+          location: selectedLocations,
+          arrivalTime: selectedTime,
+          tripNumber: tripNum
+        });
+      } else {
+        // Create new attendance document
+        await setDoc(attendanceRef, {
+          location: selectedLocations,
+          arrivalTime: selectedTime,
+          tripNumber: tripNum,
+          members: []
+        });
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('Error updating attendance with location and time:', error);
+      return false;
+    }
+  };
+
   const captureAndSaveImage = async () => {
     try {
+      // First update attendance with location and time
+      await updateAttendanceWithLocationAndTime();
+      
       // Request permissions first
       const hasPermission = await requestMediaLibraryPermissions();
       if (!hasPermission) return;
@@ -143,7 +228,41 @@ export default function LocationTimeSelectionScreen() {
       if (viewShotRef.current) {
         const uri = await viewShotRef.current.capture();
         setCapturedImageUri(uri);
-        setImagePreviewVisible(true);
+        
+        // Ensure the captured image is saved to a consistent location in the cache directory
+        const fileName = `roster-image-${Date.now()}.jpg`;
+        const cacheUri = `${FileSystem.cacheDirectory}${fileName}`;
+        
+        try {
+          // Copy the captured image to the cache directory
+          await FileSystem.copyAsync({
+            from: uri,
+            to: cacheUri
+          });
+          
+          console.log('Image saved to cache:', cacheUri);
+          
+          // Navigate to the roster preview page with the cached image URI
+          router.push({
+            pathname: '/roster-preview',
+            params: { 
+              imageUri: cacheUri,
+              date: date,
+              tripNumber: params.tripNumber
+            }
+          });
+        } catch (error) {
+          console.error('Error saving image to cache:', error);
+          // Fall back to the original URI if copying fails
+          router.push({
+            pathname: '/roster-preview',
+            params: { 
+              imageUri: uri,
+              date: date,
+              tripNumber: params.tripNumber
+            }
+          });
+        }
       }
     } catch (error) {
       console.error('Error capturing image:', error);
@@ -153,73 +272,11 @@ export default function LocationTimeSelectionScreen() {
     }
   };
 
-  const saveToGallery = async () => {
-    try {
-      if (!capturedImageUri) return;
-
-      setSavingImage(true);
-
-      // Save the image to the gallery
-      const asset = await MediaLibrary.createAssetAsync(capturedImageUri);
-      await MediaLibrary.createAlbumAsync('OhGo', asset, false);
-
-      Alert.alert('성공', '명부 이미지가 갤러리에 저장되었습니다.');
-      setImagePreviewVisible(false);
-    } catch (error) {
-      console.error('Error saving to gallery:', error);
-      Alert.alert('오류', '갤러리에 저장하는 중 오류가 발생했습니다.');
-    } finally {
-      setSavingImage(false);
-    }
-  };
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="auto" />
 
-      {/* Image Preview Modal */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={imagePreviewVisible}
-        onRequestClose={() => setImagePreviewVisible(false)}
-      >
-        <View style={styles.modalContainer}>
-          <View style={styles.imagePreviewContent}>
-            <Text style={styles.modalTitle}>명부 이미지 미리보기</Text>
-
-            {capturedImageUri && (
-              <Image
-                source={{ uri: capturedImageUri }}
-                style={styles.previewImage}
-                resizeMode="contain"
-              />
-            )}
-
-            <View style={styles.previewButtonsContainer}>
-              <TouchableOpacity
-                style={[styles.previewButton, styles.cancelButton]}
-                onPress={() => setImagePreviewVisible(false)}
-                disabled={savingImage}
-              >
-                <Text style={styles.buttonText}>취소</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.previewButton, styles.saveButton]}
-                onPress={saveToGallery}
-                disabled={savingImage}
-              >
-                {savingImage ? (
-                  <ActivityIndicator size="small" color="white" />
-                ) : (
-                  <Text style={styles.buttonText}>갤러리에 저장</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       {/* Hidden ViewShot component for capturing */}
       <View style={{ position: 'absolute', top: -9999, left: -9999 }}>
@@ -229,7 +286,6 @@ export default function LocationTimeSelectionScreen() {
               source={require('../assets/images/boarding_list.png')}
               style={styles.boardingListImage}
             />
-            <View style={styles.a4Outline} />
             <View style={styles.boardingListContent}>
               <View style={styles.boardingListTitleContainer}>
                 <Text style={styles.boardingListTitle}>승 선 자 명 부</Text>
@@ -237,12 +293,23 @@ export default function LocationTimeSelectionScreen() {
               </View>
               <Text style={styles.boardingListDesc01}>{desc01}</Text>
               <View style={styles.boardingListDateContainer}>
-                <Text style={styles.boardingListDateYear}>{dateYear}</Text>
-                <Text style={styles.boardingListDateMonth}>{dateMonth}</Text>
-                <Text style={styles.boardingListDateDay}>{dateDay}</Text>
+                <Text style={styles.boardingListDate}>승선일 : {dateYear} 년 {dateMonth} 월 {dateDay} 일</Text>
               </View>
               <Text style={styles.boardingListTon}>{shipTon}</Text>
               <ScrollView style={styles.boardingListScroll}>
+                {/* Table Header */}
+                <View style={styles.boardingListTableHeader}>
+                  <Text style={styles.boardingListHeaderNumber}>번호</Text>
+                  <Text style={styles.boardingListHeaderName}>성명</Text>
+                  <Text style={styles.boardingListHeaderBirth}>생년월일</Text>
+                  <Text style={styles.boardingListHeaderGender}>성별</Text>
+                  <Text style={styles.boardingListHeaderAddress}>주소</Text>
+                  <Text style={styles.boardingListHeaderPhone}>전화번호</Text>
+                  <Text style={styles.boardingListHeaderEmergency}>비상연락처</Text>
+                  <Text style={styles.boardingListHeaderSailor}>비고</Text>
+                </View>
+                
+                {/* Table Rows */}
                 {rosterItems.map((item, index) => (
                   <View key={item.id} style={styles.boardingListItem}>
                     <Text style={styles.boardingListNumber}>{index + 1}</Text>
@@ -468,7 +535,7 @@ const styles = StyleSheet.create({
   backButton: {
     flex: 1,
     backgroundColor: '#f44336',
-    paddingVertical: 14,
+    paddingVertical: 10,
     borderRadius: 8,
     alignItems: 'center',
     marginRight: 8,
@@ -476,7 +543,7 @@ const styles = StyleSheet.create({
   nextButton: {
     flex: 1,
     backgroundColor: '#4caf50',
-    paddingVertical: 14,
+    paddingVertical: 10,
     borderRadius: 8,
     alignItems: 'center',
     marginLeft: 8,
@@ -485,55 +552,6 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontFamily: "GiantRegular"
-  },
-  // Modal styles
-  modalContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  imagePreviewContent: {
-    backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 20,
-    width: '90%',
-    maxHeight: '90%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontFamily: "GiantRegular",
-    color: '#333',
-    textAlign: 'center',
-  },
-  previewImage: {
-    width: '100%',
-    height: 500,
-    marginVertical: 16,
-    borderRadius: 8,
-  },
-  previewButtonsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  previewButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  cancelButton: {
-    backgroundColor: '#f44336',
-    marginRight: 8,
-  },
-  saveButton: {
-    backgroundColor: '#4caf50',
-    marginLeft: 8,
   },
   // Boarding List Image styles
   boardingListContainer: {
@@ -545,15 +563,6 @@ const styles = StyleSheet.create({
     width: 1239,
     height: 1752,
     position: 'absolute',
-  },
-  a4Outline: {
-    width: 1239,
-    height: 1752,
-    position: 'absolute',
-    borderWidth: 2,
-    borderColor: '#000',
-    borderStyle: 'solid',
-    zIndex: 1,
   },
   boardingListContent: {
     position: 'absolute',
@@ -573,25 +582,29 @@ const styles = StyleSheet.create({
     color: '#000',
     fontWeight: 'bold',
     marginLeft: 400,
+    lineHeight: 40,
   },
   boardingListShipName: {
     fontSize: 32,
     color: '#000',
     marginLeft: 20,
     fontWeight: 'bold',
+    lineHeight: 38,
   },
   boardingListDesc01: {
     fontSize: 14,
     color: '#000',
     width: '100%',
     textAlign: 'center',
+    lineHeight: 20,
   },
   boardingListDesc02: {
     fontSize: 14,
     color: '#000',
     width: '100%',
     textAlign: 'center',
-    marginTop: 10
+    marginTop: 10,
+    lineHeight: 20,
   },
   boardingListOnBoard: {
     fontSize: 32,
@@ -599,33 +612,26 @@ const styles = StyleSheet.create({
     width: '100%',
     textAlign: 'center',
     fontWeight: 'bold',
-    marginBottom: 30
+    marginBottom: 30,
+    lineHeight: 38,
   },
   boardingListDateContainer: {
     flexDirection: 'row',
-    marginLeft: 197,
+    marginLeft: 100,
     alignItems: 'center'
   },
-  boardingListDateYear: {
-    fontSize: 18,
+  boardingListDate: {
+    fontSize: 22,
     color: '#000',
-  },
-  boardingListDateMonth: {
-    fontSize: 18,
-    color: '#000',
-    marginLeft: 40
-  },
-  boardingListDateDay: {
-    fontSize: 18,
-    color: '#000',
-    marginLeft: 40
+    width: '100%',
+    textAlign: 'right'
   },
   boardingListTon: {
-    fontSize: 18,
+    fontSize: 22,
     color: '#000',
     width: '100%',
     textAlign: 'right',
-    marginTop: -28,
+    marginTop: -33,
     paddingRight: 85,
     marginBottom: 105,
   },
@@ -641,6 +647,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     width: '100%',
     textAlign: 'center',
+    lineHeight: 24,
   },
   infoRow: {
     flexDirection: 'row',
@@ -654,33 +661,119 @@ const styles = StyleSheet.create({
     width: 80,
     textAlign: 'right',
     fontWeight: 'bold',
+    lineHeight: 24,
   },
   infoColon: {
     fontSize: 18,
     color: '#000',
     width: 20,
     textAlign: 'center',
+    lineHeight: 24,
   },
   infoValue: {
     fontSize: 18,
     color: '#000',
     width: 250,
     textAlign: 'left',
+    lineHeight: 24,
   },
   boardingListScroll: {
     flex: 1,
+  },
+  boardingListTableHeader: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    marginLeft: 20,
+    height: 40,
+    borderWidth: 1,
+    borderColor: '#000',
+    marginBottom: 5,
+  },
+  boardingListHeaderNumber: {
+    width: 40,
+    fontSize: 16,
+    color: '#000',
+    fontWeight: 'bold',
+    paddingTop: 10,
+    lineHeight: 22,
+  },
+  boardingListHeaderName: {
+    width: 144,
+    fontSize: 16,
+    color: '#000',
+    fontWeight: 'bold',
+    paddingTop: 10,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  boardingListHeaderBirth: {
+    width: 125,
+    fontSize: 16,
+    color: '#000',
+    fontWeight: 'bold',
+    paddingTop: 10,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  boardingListHeaderGender: {
+    width: 70,
+    fontSize: 16,
+    color: '#000',
+    fontWeight: 'bold',
+    paddingTop: 10,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  boardingListHeaderAddress: {
+    width: 234,
+    fontSize: 16,
+    color: '#000',
+    fontWeight: 'bold',
+    paddingTop: 10,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  boardingListHeaderPhone: {
+    width: 145,
+    fontSize: 16,
+    color: '#000',
+    fontWeight: 'bold',
+    paddingTop: 10,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  boardingListHeaderEmergency: {
+    width: 145,
+    fontSize: 16,
+    color: '#000',
+    fontWeight: 'bold',
+    paddingTop: 10,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  boardingListHeaderSailor: {
+    width: 137,
+    fontSize: 16,
+    color: '#000',
+    fontWeight: 'bold',
+    paddingTop: 10,
+    textAlign: 'center',
+    lineHeight: 22,
   },
   boardingListItem: {
     flexDirection: 'row',
     paddingHorizontal: 20,
     marginLeft: 20,
-    height: 50.5
+    height: 50.5,
+    borderWidth: 0.5,
+    borderColor: '#ccc',
   },
   boardingListNumber: {
     width: 40,
     fontSize: 18,
     color: '#000',
     paddingTop: 10,
+    lineHeight: 24,
   },
   boardingListName: {
     width: 144,
@@ -688,6 +781,7 @@ const styles = StyleSheet.create({
     color: '#000',
     paddingTop: 10,
     textAlign: 'center',
+    lineHeight: 24,
   },
   boardingListBirth: {
     width: 125,
@@ -695,13 +789,15 @@ const styles = StyleSheet.create({
     color: '#000',
     paddingTop: 10,
     textAlign: 'center',
+    lineHeight: 22,
   },
   boardingListGender: {
     width: 70,
     fontSize: 18,
     color: '#000',
     paddingTop: 10,
-    textAlign: 'center'
+    textAlign: 'center',
+    lineHeight: 24,
   },
   boardingListPhone: {
     width: 145,
@@ -709,6 +805,7 @@ const styles = StyleSheet.create({
     color: '#000',
     paddingTop: 12,
     textAlign: 'center',
+    lineHeight: 20,
   },
   boardingListEmergency: {
     width: 145,
@@ -716,13 +813,15 @@ const styles = StyleSheet.create({
     color: '#000',
     paddingTop: 12,
     textAlign: 'center',
+    lineHeight: 20,
   },
   boardingListSailor: {
     width: 137,
     fontSize: 16,
     color: '#000',
     paddingTop: 12,
-    textAlign: 'center'
+    textAlign: 'center',
+    lineHeight: 22,
   },
   boardingListAddress: {
     width: 234,
