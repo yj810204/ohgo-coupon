@@ -24,6 +24,27 @@ export default function TodayRosterScreen() {
   const [tempSelectedDate, setTempSelectedDate] = useState<Date | null>(null);
   const [selectedTrip, setSelectedTrip] = useState<number | null>(null);
   const [confirmedTrips, setConfirmedTrips] = useState<Record<string, number[]>>({});
+  const [usingCachedData, setUsingCachedData] = useState(false);
+  
+  // Cache for month data to avoid redundant fetches
+  const [cachedMonths, setCachedMonths] = useState<Record<string, {
+    datesWithRoster: string[],
+    confirmedTrips: Record<string, number[]>,
+    timestamp: number
+  }>>({});
+  
+  // Function to limit cache size (keep only the 3 most recently used months)
+  const limitCacheSize = (cache: Record<string, any>) => {
+    const MAX_CACHE_SIZE = 3;
+    if (Object.keys(cache).length <= MAX_CACHE_SIZE) return cache;
+    
+    // Sort by timestamp (most recent first)
+    const sortedEntries = Object.entries(cache).sort((a, b) => b[1].timestamp - a[1].timestamp);
+    // Keep only the MAX_CACHE_SIZE most recent entries
+    const limitedEntries = sortedEntries.slice(0, MAX_CACHE_SIZE);
+    
+    return Object.fromEntries(limitedEntries);
+  };
 
   // Generate calendar days
   const monthStart = startOfMonth(currentMonth);
@@ -57,6 +78,34 @@ export default function TodayRosterScreen() {
   const fetchRosterData = async () => {
     setLoading(true);
     try {
+      const monthKey = format(currentMonth, 'yyyy-MM');
+      
+      // Check if we already have cached data for this month
+      if (cachedMonths[monthKey]) {
+        console.log('Using cached data for month:', monthKey);
+        setDatesWithRoster(cachedMonths[monthKey].datesWithRoster);
+        setConfirmedTrips(cachedMonths[monthKey].confirmedTrips);
+        setUsingCachedData(true);
+        
+        // Update the timestamp to mark this cache entry as recently used
+        setCachedMonths(prev => {
+          const updatedCache = {
+            ...prev,
+            [monthKey]: {
+              ...prev[monthKey],
+              timestamp: Date.now()
+            }
+          };
+          return limitCacheSize(updatedCache);
+        });
+        
+        setLoading(false);
+        return;
+      }
+      
+      // If we're fetching new data, reset the cached data flag
+      setUsingCachedData(false);
+      
       const startDateStr = format(monthStart, 'yyyy-MM-dd');
       const endDateStr = format(monthEnd, 'yyyy-MM-dd');
       
@@ -65,56 +114,98 @@ export default function TodayRosterScreen() {
       const datesWithRosterArray: string[] = [];
       const confirmedTripsData: Record<string, number[]> = {};
       
-      // Check each date for roster data and confirmed trips
+      // Batch fetch attendance data for the entire month
+      const attendanceQuery = query(
+        collection(db, 'attendance'),
+        where('__name__', '>=', startDateStr),
+        where('__name__', '<=', endDateStr)
+      );
+      const attendanceSnapshot = await getDocs(attendanceQuery);
+      
+      // Create a map of dates with attendance
+      const attendanceDates = new Map();
+      attendanceSnapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.members && data.members.length > 0) {
+          attendanceDates.set(doc.id, true);
+        }
+      });
+      
+      // Batch fetch trips data for the entire month
+      const tripsQuery = query(
+        collection(db, 'trips'),
+        where('__name__', '>=', startDateStr),
+        where('__name__', '<=', endDateStr)
+      );
+      const tripsSnapshot = await getDocs(tripsQuery);
+      
+      // Create a map of dates with confirmed trips
+      const tripsDates = new Map();
+      tripsSnapshot.forEach(doc => {
+        const tripsData = doc.data();
+        const confirmedForDate: number[] = [];
+        
+        // Define the trip data type with proper typing
+        interface TripData {
+          confirmed: boolean;
+          confirmedAt: string;
+        }
+        
+        // Define the document data type with index signature for dynamic trip keys
+        interface TripsDocData {
+          [key: `trip${number}`]: TripData;
+        }
+        
+        // Cast the data to our typed interface
+        const typedTripsData = tripsData as TripsDocData;
+        
+        // Check each trip (1, 2, 3)
+        for (let i = 1; i <= 3; i++) {
+          const tripKey = `trip${i}` as `trip${number}`;
+          if (typedTripsData[tripKey] && typedTripsData[tripKey].confirmed) {
+            confirmedForDate.push(i);
+          }
+        }
+        
+        if (confirmedForDate.length > 0) {
+          tripsDates.set(doc.id, confirmedForDate);
+        }
+      });
+      
+      // Process all dates in the month using the cached data
       for (const date of datesArray) {
         const dateStr = format(date, 'yyyy-MM-dd');
         
-        // Check for attendance data
-        const attendanceRef = doc(db, 'attendance', dateStr);
-        const attendanceSnap = await getDoc(attendanceRef);
-        
-        if (attendanceSnap.exists() && attendanceSnap.data().members && attendanceSnap.data().members.length > 0) {
+        // Check for attendance data using the map
+        if (attendanceDates.has(dateStr)) {
           datesWithRosterArray.push(dateStr);
         }
         
-        // Check for confirmed trips
-        const tripsRef = doc(db, 'trips', dateStr);
-        const tripsSnap = await getDoc(tripsRef);
-        
-        if (tripsSnap.exists()) {
-          const tripsData = tripsSnap.data();
-          const confirmedForDate: number[] = [];
-          
-          // Define the trip data type with proper typing
-          interface TripData {
-            confirmed: boolean;
-            confirmedAt: string;
-          }
-          
-          // Define the document data type with index signature for dynamic trip keys
-          interface TripsDocData {
-            [key: `trip${number}`]: TripData;
-          }
-          
-          // Cast the data to our typed interface
-          const typedTripsData = tripsData as TripsDocData;
-          
-          // Check each trip (1, 2, 3)
-          for (let i = 1; i <= 3; i++) {
-            const tripKey = `trip${i}` as `trip${number}`;
-            if (typedTripsData[tripKey] && typedTripsData[tripKey].confirmed) {
-              confirmedForDate.push(i);
-            }
-          }
-          
-          if (confirmedForDate.length > 0) {
-            confirmedTripsData[dateStr] = confirmedForDate;
-          }
+        // Check for confirmed trips using the map
+        if (tripsDates.has(dateStr)) {
+          confirmedTripsData[dateStr] = tripsDates.get(dateStr);
         }
       }
       
+      // Update state
       setDatesWithRoster(datesWithRosterArray);
       setConfirmedTrips(confirmedTripsData);
+      
+      // Cache the data for this month with timestamp
+      setCachedMonths(prev => {
+        const updatedCache = {
+          ...prev,
+          [monthKey]: {
+            datesWithRoster: datesWithRosterArray,
+            confirmedTrips: confirmedTripsData,
+            timestamp: Date.now()
+          }
+        };
+        
+        // Limit cache size
+        return limitCacheSize(updatedCache);
+      });
+      
     } catch (error) {
       console.error('Error fetching roster data:', error);
     } finally {
@@ -126,6 +217,16 @@ export default function TodayRosterScreen() {
   useEffect(() => {
     fetchRosterData();
   }, [currentMonth]);
+  
+  // Add a timeout to hide loading indicator if it takes too long
+  useEffect(() => {
+    if (loading) {
+      const timer = setTimeout(() => {
+        setLoading(false);
+      }, 10000); // 10 seconds timeout
+      return () => clearTimeout(timer);
+    }
+  }, [loading]);
   
   // Handle date selection
   const handleDateClick = (day: Date) => {
@@ -175,9 +276,17 @@ export default function TodayRosterScreen() {
           <TouchableOpacity onPress={prevMonth} disabled={loading}>
             <Ionicons name="chevron-back" size={24} color={loading ? "#ccc" : "#333"} />
           </TouchableOpacity>
-          <Text style={styles.calendarTitle}>
-            {format(currentMonth, dateFormat)}
-          </Text>
+          <View style={styles.titleContainer}>
+            <Text style={styles.calendarTitle}>
+              {format(currentMonth, dateFormat)}
+            </Text>
+            {usingCachedData && (
+              <View style={styles.cachedIndicator}>
+                <Ionicons name="flash" size={14} color="#4caf50" />
+                <Text style={styles.cachedText}>빠른 로딩</Text>
+              </View>
+            )}
+          </View>
           <TouchableOpacity onPress={nextMonth} disabled={loading}>
             <Ionicons name="chevron-forward" size={24} color={loading ? "#ccc" : "#333"} />
           </TouchableOpacity>
@@ -593,10 +702,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
+  titleContainer: {
+    flexDirection: 'column',
+    alignItems: 'center',
+  },
   calendarTitle: {
     fontSize: 18,
     fontFamily: "GiantRegular",
     color: '#333',
+  },
+  cachedIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#e8f5e9',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginTop: 4,
+  },
+  cachedText: {
+    fontSize: 10,
+    color: '#4caf50',
+    marginLeft: 2,
+    fontFamily: "GiantRegular",
   },
   daysHeader: {
     flexDirection: 'row',

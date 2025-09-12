@@ -9,47 +9,42 @@ import {
   Alert,
   Platform,
   KeyboardAvoidingView,
+  ActivityIndicator,
 } from 'react-native';
 import { Asset } from 'expo-asset';
 import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import Modal from 'react-native-modal';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { getDoc, setDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { getUser } from '../utils/secure-store';
 import { WebView } from 'react-native-webview';
 import * as FileSystem from 'expo-file-system';
+import Modal from 'react-native-modal';
 
 export default function BoardingForm() {
   const router = useRouter();
+  const params = useLocalSearchParams();
+  const { uuid, name: paramName, dob, returnTo, date, dateDisplay, tripNumber } = params;
   const scrollRef = useRef<ScrollView>(null);
 
-  const [form, setForm] = useState<{
-    name: string;
-    birth: string;
-    gender: string;
-    phone: string;
-    emergency: string;
-    address: string;
-  }>({
-    name: '',
-    birth: '',
-    gender: '',
-    phone: '',
-    emergency: '',
-    address: '',
-  });
+  // Individual state variables instead of form object
+  const [name, setName] = useState('');
+  const [birth, setBirth] = useState('');
+  const [gender, setGender] = useState('');
+  const [phone, setPhone] = useState('');
+  const [emergency, setEmergency] = useState('');
+  const [address, setAddress] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [role, setRole] = useState('');
 
+  // Privacy agreement states
   const [agreed, setAgreed] = useState(false);
   const [agreedThirdParty, setAgreedThirdParty] = useState(false);
-  const [showBirthModal, setShowBirthModal] = useState(false);
-  const [showGenderModal, setShowGenderModal] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [showThirdPartyModal, setShowThirdPartyModal] = useState(false);
   const [privacyHtml, setPrivacyHtml] = useState('');
   const [thirdPartyHtml, setThirdPartyHtml] = useState('');
-  const [birthDate, setBirthDate] = useState(new Date());
 
   const loadHtmlFile = async (filename: string) => {
     try {
@@ -114,15 +109,60 @@ export default function BoardingForm() {
   useEffect(() => {
     (async () => {
       try {
-        // Load user data
-        const user = await getUser();
-        if (user?.uuid) {
-          const snap = await getDoc(doc(db, 'users', user.uuid, 'boarding', 'info'));
+        // Set initial values from params if available
+        if (paramName) setName(paramName.toString());
+        if (dob) setBirth(dob.toString());
+        
+        let userUuid = '';
+        
+        // Load user data if UUID is provided
+        if (uuid) {
+          userUuid = uuid.toString();
+          const snap = await getDoc(doc(db, 'users', userUuid, 'boarding', 'info'));
           if (snap.exists()) {
             const data = snap.data();
-            setForm(data as typeof form);
+            setName(data.name || paramName || '');
+            setBirth(data.birth || dob || '');
+            setGender(data.gender || '');
+            setPhone(data.phone || '');
+            setEmergency(data.emergency || '');
+            setAddress(data.address || '');
             setAgreed(!!data.agreed);
             setAgreedThirdParty(!!data.agreedThirdParty);
+            setRole(data.role || '');
+          }
+          
+          // Check if user is admin
+          const userDoc = await getDoc(doc(db, 'users', userUuid));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            setIsAdmin(!!userData.isAdmin);
+          }
+        } else {
+          // If no UUID provided, load logged-in user's data
+          const user = await getUser();
+          if (user?.uuid) {
+            userUuid = user.uuid;
+            const snap = await getDoc(doc(db, 'users', userUuid, 'boarding', 'info'));
+            if (snap.exists()) {
+              const data = snap.data();
+              setName(data.name || '');
+              setBirth(data.birth || '');
+              setGender(data.gender || '');
+              setPhone(data.phone || '');
+              setEmergency(data.emergency || '');
+              setAddress(data.address || '');
+              setAgreed(!!data.agreed);
+              setAgreedThirdParty(!!data.agreedThirdParty);
+              setRole(data.role || '');
+            }
+            
+            // Check if user is admin
+            const userDoc = await getDoc(doc(db, 'users', userUuid));
+            if (userDoc.exists()) {
+              const userData = userDoc.data();
+              setIsAdmin(!!userData.isAdmin);
+            }
           }
         }
         
@@ -220,27 +260,44 @@ export default function BoardingForm() {
     })();
   }, []);
 
-  const handleChange = (key: keyof typeof form, value: string) => {
-    setForm({ ...form, [key]: value });
+  // Format phone number as user types
+  const formatPhoneNumber = (text: string) => {
+    // Remove all non-numeric characters
+    const cleaned = text.replace(/\D/g, '');
+    
+    // Format as XXX-XXXX-XXXX
+    let formatted = '';
+    if (cleaned.length <= 3) {
+      formatted = cleaned;
+    } else if (cleaned.length <= 7) {
+      formatted = `${cleaned.slice(0, 3)}-${cleaned.slice(3)}`;
+    } else {
+      formatted = `${cleaned.slice(0, 3)}-${cleaned.slice(3, 7)}-${cleaned.slice(7, 11)}`;
+    }
+    
+    return formatted;
   };
 
-  const formatPhone = (value: string) => {
-    const numbersOnly = value.replace(/[^0-9]/g, '');
-    if (numbersOnly.length < 4) return numbersOnly;
-    if (numbersOnly.length < 7)
-      return `${numbersOnly.slice(0, 3)}-${numbersOnly.slice(3)}`;
-    if (numbersOnly.length < 11)
-      return `${numbersOnly.slice(0, 3)}-${numbersOnly.slice(3, 6)}-${numbersOnly.slice(6)}`;
-    return `${numbersOnly.slice(0, 3)}-${numbersOnly.slice(3, 7)}-${numbersOnly.slice(7, 11)}`;
-  };
-
-  const handlePhoneChange = (key: keyof typeof form, value: string) => {
-    const formatted = formatPhone(value);
-    handleChange(key, formatted);
+  // Format DOB as user types
+  const formatDOB = (text: string) => {
+    // Remove all non-numeric characters
+    const cleaned = text.replace(/\D/g, '');
+    
+    // Format as YYYY-MM-DD
+    let formatted = '';
+    if (cleaned.length <= 4) {
+      formatted = cleaned;
+    } else if (cleaned.length <= 6) {
+      formatted = `${cleaned.slice(0, 4)}-${cleaned.slice(4)}`;
+    } else {
+      formatted = `${cleaned.slice(0, 4)}-${cleaned.slice(4, 6)}-${cleaned.slice(6, 8)}`;
+    }
+    
+    return formatted;
   };
 
   const handleSubmit = async () => {
-    if (!form.name || !form.birth || !form.gender || !form.phone || !form.emergency || !form.address) {
+    if (!name || !birth || !gender || !phone || !emergency || !address) {
       Alert.alert('입력 필요', '모든 항목을 빠짐없이 입력해 주세요.');
       return;
     }
@@ -252,42 +309,83 @@ export default function BoardingForm() {
       Alert.alert('동의 필요', '제3자 개인정보 제공에 동의하셔야 합니다.');
       return;
     }
-    if (!/^[0-9]{6}$|^[0-9]{8}$/.test(form.birth.replace(/-/g, ''))) {
+    
+    // Validate birth format
+    const birthClean = birth.replace(/-/g, '');
+    if (!/^[0-9]{6}$|^[0-9]{8}$/.test(birthClean)) {
       Alert.alert('생년월일 확인', '생년월일은 6자리 또는 8자리여야 합니다.');
       return;
     }
+    
+    setIsSubmitting(true);
     try {
-      const user = await getUser();
-      if (!user?.uuid) throw new Error('UUID가 없습니다.');
-      await setDoc(doc(db, 'users', user.uuid, 'boarding', 'info'), { ...form, agreed, agreedThirdParty });
+      // Use the UUID from params if available, otherwise use the logged-in user's UUID
+      let userUuid;
+      if (uuid) {
+        userUuid = uuid.toString();
+      } else {
+        const user = await getUser();
+        if (!user?.uuid) throw new Error('UUID가 없습니다.');
+        userUuid = user.uuid;
+      }
+      
+      // Prepare boarding info data
+      const boardingData: {
+        name: string;
+        birth: string;
+        gender: string;
+        phone: string;
+        emergency: string;
+        address: string;
+        agreed: boolean;
+        agreedThirdParty: boolean;
+        role?: string;
+      } = {
+        name,
+        birth,
+        gender,
+        phone,
+        emergency,
+        address,
+        agreed,
+        agreedThirdParty,
+      };
+      
+      // Add role field only if it's not 'none'
+      if (isAdmin && role && role !== 'none') {
+        boardingData.role = role;
+      }
+      
+      await setDoc(doc(db, 'users', userUuid, 'boarding', 'info'), boardingData);
+      
+      // If user is admin and role is selected (and not 'none'), update the main user document with the role
+      if (isAdmin && role && role !== 'none') {
+        await setDoc(doc(db, 'users', userUuid), { role }, { merge: true });
+      } else if (isAdmin && role === 'none') {
+        // If 'none' is selected, remove the role field from the main user document
+        await setDoc(doc(db, 'users', userUuid), { role: null }, { merge: true });
+      }
+      
       Alert.alert('저장 완료', '승선 정보가 저장되었습니다.');
-      router.back();
+      
+      // Navigate back to the appropriate screen
+      if (returnTo === 'roster-list' && date && dateDisplay && tripNumber) {
+        router.push({
+          pathname: '/roster-list',
+          params: { 
+            date, 
+            dateDisplay, 
+            tripNumber 
+          }
+        });
+      } else {
+        router.back();
+      }
     } catch (e) {
       console.error('저장 오류:', e);
       Alert.alert('오류', '정보 저장 중 오류가 발생했습니다.');
-    }
-  };
-
-  const confirmBirthDate = () => {
-    const yyyy = birthDate.getFullYear();
-    const mm = String(birthDate.getMonth() + 1).padStart(2, '0');
-    const dd = String(birthDate.getDate()).padStart(2, '0');
-    handleChange('birth', `${yyyy}-${mm}-${dd}`);
-    setShowBirthModal(false);
-  };
-
-  const handleBirthChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
-    if (Platform.OS === 'android') {
-      if (event.type === 'set' && selectedDate) {
-        setBirthDate(selectedDate);
-        const yyyy = selectedDate.getFullYear();
-        const mm = String(selectedDate.getMonth() + 1).padStart(2, '0');
-        const dd = String(selectedDate.getDate()).padStart(2, '0');
-        handleChange('birth', `${yyyy}-${mm}-${dd}`);
-      }
-      setShowBirthModal(false);
-    } else {
-      if (selectedDate) setBirthDate(selectedDate);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -297,39 +395,132 @@ export default function BoardingForm() {
         <View style={styles.cardBox}>
           <Text style={styles.title}>승선 정보 입력</Text>
 
-          {[
-            { label: '이름', key: 'name', placeholder: '홍길동' },
-            { label: '생년월일', key: 'birth', placeholder: '생년월일 선택' },
-            { label: '성별', key: 'gender', placeholder: '성별 선택' },
-            { label: '연락처', key: 'phone', placeholder: '010-1234-5678' },
-            { label: '비상 연락처', key: 'emergency', placeholder: '예: 보호자 연락처' },
-            { label: '주소', key: 'address', placeholder: '주소를 입력해주세요.' },
-          ].map(({ label, key, placeholder }) => (
-            <View style={styles.field} key={key}>
-              <Text style={styles.label}>{label}</Text>
-              {key === 'birth' ? (
-                <TouchableOpacity onPress={() => setShowBirthModal(true)} style={styles.input}>
-                  <Text style={styles.text}>{form.birth || placeholder}</Text>
-                </TouchableOpacity>
-              ) : key === 'gender' ? (
-                <TouchableOpacity onPress={() => setShowGenderModal(true)} style={styles.input}>
-                  <Text style={styles.text}>{form.gender || placeholder}</Text>
-                </TouchableOpacity>
-              ) : (
-                <TextInput
-                  style={styles.input}
-                  placeholder={placeholder}
-                  value={form[key as keyof typeof form]}
-                  onChangeText={(text) =>
-                    key === 'phone' || key === 'emergency'
-                      ? handlePhoneChange(key as keyof typeof form, text)
-                      : handleChange(key as keyof typeof form, text)
-                  }
-                  keyboardType={key === 'phone' || key === 'emergency' ? 'phone-pad' : 'default'}
-                />
-              )}
+          <View style={styles.field}>
+            <Text style={styles.label}>이름 *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="홍길동"
+              value={name}
+              onChangeText={setName}
+            />
+          </View>
+          
+          <View style={styles.field}>
+            <Text style={styles.label}>생년월일 * (YYYYMMDD)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="예: 19900101"
+              value={birth}
+              onChangeText={(text) => setBirth(formatDOB(text))}
+              keyboardType="number-pad"
+            />
+          </View>
+          
+          <View style={styles.field}>
+            <Text style={styles.label}>성별</Text>
+            <View style={styles.genderContainer}>
+              <TouchableOpacity 
+                style={[
+                  styles.genderButton, 
+                  gender === '남' && styles.selectedGenderButton
+                ]}
+                onPress={() => setGender('남')}
+              >
+                <Text style={[
+                  styles.genderButtonText,
+                  gender === '남' && styles.selectedGenderButtonText
+                ]}>남</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[
+                  styles.genderButton, 
+                  gender === '여' && styles.selectedGenderButton
+                ]}
+                onPress={() => setGender('여')}
+              >
+                <Text style={[
+                  styles.genderButtonText,
+                  gender === '여' && styles.selectedGenderButtonText
+                ]}>여</Text>
+              </TouchableOpacity>
             </View>
-          ))}
+          </View>
+          
+          <View style={styles.field}>
+            <Text style={styles.label}>연락처 *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="010-1234-5678"
+              value={phone}
+              onChangeText={(text) => setPhone(formatPhoneNumber(text))}
+              keyboardType="phone-pad"
+            />
+          </View>
+          
+          <View style={styles.field}>
+            <Text style={styles.label}>비상 연락처</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="예: 보호자 연락처"
+              value={emergency}
+              onChangeText={(text) => setEmergency(formatPhoneNumber(text))}
+              keyboardType="phone-pad"
+            />
+          </View>
+          
+          <View style={styles.field}>
+            <Text style={styles.label}>주소</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="주소를 입력해주세요."
+              value={address}
+              onChangeText={setAddress}
+            />
+          </View>
+
+          {isAdmin && (
+            <View style={styles.field}>
+              <Text style={styles.label}>역할</Text>
+              <View style={styles.genderContainer}>
+                <TouchableOpacity 
+                  style={[
+                    styles.genderButton, 
+                    role === 'captain' && styles.selectedGenderButton
+                  ]}
+                  onPress={() => setRole('captain')}
+                >
+                  <Text style={[
+                    styles.genderButtonText,
+                    role === 'captain' && styles.selectedGenderButtonText
+                  ]}>선장</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[
+                    styles.genderButton, 
+                    role === 'sailor' && styles.selectedGenderButton
+                  ]}
+                  onPress={() => setRole('sailor')}
+                >
+                  <Text style={[
+                    styles.genderButtonText,
+                    role === 'sailor' && styles.selectedGenderButtonText
+                  ]}>선원</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[
+                    styles.genderButton, 
+                    role === 'none' && styles.selectedGenderButton
+                  ]}
+                  onPress={() => setRole('none')}
+                >
+                  <Text style={[
+                    styles.genderButtonText,
+                    role === 'none' && styles.selectedGenderButtonText
+                  ]}>없음</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
 
           <TouchableOpacity style={styles.checkboxRow} onPress={() => setAgreed(!agreed)}>
             <Ionicons name={agreed ? 'checkbox-outline' : 'square-outline'} size={22} color={agreed ? '#1e88e5' : '#888'} />
@@ -353,44 +544,18 @@ export default function BoardingForm() {
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
-            <Text style={styles.submitButtonText}>저장</Text>
+          <TouchableOpacity 
+            style={styles.submitButton} 
+            onPress={handleSubmit}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.submitButtonText}>저장</Text>
+            )}
           </TouchableOpacity>
         </View>
-
-        <Modal isVisible={showBirthModal} onBackdropPress={() => setShowBirthModal(false)} style={styles.modalWrap}>
-          <View style={styles.modalBox}>
-            <DateTimePicker
-              value={birthDate}
-              mode="date"
-              display="spinner"
-              onChange={handleBirthChange}
-              maximumDate={new Date()}
-              minimumDate={new Date(1900, 0, 1)}
-            />
-            {Platform.OS === 'ios' && (
-              <TouchableOpacity style={styles.submitButton} onPress={confirmBirthDate}>
-                <Text style={styles.submitButtonText}>확인</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </Modal>
-
-        <Modal isVisible={showGenderModal} onBackdropPress={() => setShowGenderModal(false)} style={styles.modalWrap}>
-          <View style={styles.modalBox}>
-            {['남', '여'].map((gender) => (
-              <TouchableOpacity key={gender} onPress={() => {
-                setShowGenderModal(false);
-                handleChange('gender', gender);
-              }}>
-                <Text style={styles.genderOption}>{gender}</Text>
-              </TouchableOpacity>
-            ))}
-            <TouchableOpacity onPress={() => setShowGenderModal(false)}>
-              <Text style={[styles.genderOption, { color: '#888' }]}>취소</Text>
-            </TouchableOpacity>
-          </View>
-        </Modal>
 
         <Modal isVisible={showPrivacyModal} onBackdropPress={() => setShowPrivacyModal(false)} style={styles.modalWrap}>
           <View style={styles.webViewModalBox}>
@@ -552,10 +717,30 @@ const styles = StyleSheet.create({
   webView: {
     flex: 1,
   },
-  genderOption: {
-    fontSize: 18,
-    paddingVertical: 12,
-    textAlign: 'center',
+  // New styles from roster-member-search
+  genderContainer: {
+    flexDirection: 'row',
+    marginTop: 8,
+  },
+  genderButton: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    borderRadius: 4,
+    marginRight: 8,
+  },
+  selectedGenderButton: {
+    backgroundColor: '#e3f2fd',
+    borderColor: '#1e88e5',
+    borderWidth: 1,
+  },
+  genderButtonText: {
+    fontSize: 16,
     fontFamily: 'GiantRegular',
+    color: '#666',
+  },
+  selectedGenderButtonText: {
+    color: '#1e88e5',
   },
 });

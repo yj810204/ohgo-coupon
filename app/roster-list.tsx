@@ -44,6 +44,7 @@ export default function RosterListScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [rosterItems, setRosterItems] = useState<RosterItem[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
+  const [noRosterModalVisible, setNoRosterModalVisible] = useState(false);
   const [selectedRoster, setSelectedRoster] = useState<RosterItem | null>(null);
   const [imagePreviewVisible, setImagePreviewVisible] = useState(false);
   const [capturedImageUri, setCapturedImageUri] = useState<string | null>(null);
@@ -198,6 +199,38 @@ export default function RosterListScreen() {
       Alert.alert('오류', '명부 정보를 새로고침하는 중 오류가 발생했습니다.');
     } finally {
       setRefreshing(false);
+    }
+  };
+  
+  // Function to remove a member from the roster
+  const removeMemberFromRoster = async (memberId: string) => {
+    if (!date) return;
+    
+    try {
+      // Get the attendance document for the specified date
+      const attendanceRef = doc(db, 'attendance', String(date));
+      const attendanceSnap = await getDoc(attendanceRef);
+      
+      if (attendanceSnap.exists()) {
+        const attendanceData = attendanceSnap.data();
+        const currentMembers = attendanceData.members || [];
+        
+        // Remove the member from the array
+        const updatedMembers = currentMembers.filter((id: string) => id !== memberId);
+        
+        // Update the attendance document
+        await updateDoc(attendanceRef, {
+          members: updatedMembers
+        });
+        
+        // Refresh the roster list
+        await loadRosterData();
+        
+        Alert.alert('성공', '명부에서 삭제되었습니다.');
+      }
+    } catch (error) {
+      console.error('Error removing member from roster:', error);
+      Alert.alert('오류', '명부에서 삭제하는 중 오류가 발생했습니다.');
     }
   };
 
@@ -383,18 +416,9 @@ export default function RosterListScreen() {
       setSelectedRoster(item);
       setModalVisible(true);
     } else {
-      // If the member doesn't have a roster, show an alert or navigate to member details
-      Alert.alert('알림', `${item.name}님의 명부 정보가 없습니다.`);
-
-      // Optionally, still navigate to member details
-      // router.push({
-      //   pathname: '/member-detail',
-      //   params: {
-      //     uuid: item.id,
-      //     name: item.name,
-      //     dob: item.birth
-      //   }
-      // });
+      // If the member doesn't have a roster, show a modal instead of an alert
+      setSelectedRoster(item);
+      setNoRosterModalVisible(true);
     }
   };
 
@@ -508,50 +532,54 @@ export default function RosterListScreen() {
       setSavingImage(false);
     }
   };
+  
 
   const renderRosterItem = ({ item }: { item: RosterItem }) => (
-      <TouchableOpacity
-          style={[
-            styles.rosterItem,
-            item.isCaptain ? styles.captainRosterItem : null,
-            item.isSailor ? styles.sailorRosterItem : null
-          ]}
-          onPress={() => handleRosterItemPress(item)}
-      >
-        <View style={styles.rosterItemContent}>
-          <View style={styles.nameContainer}>
-            <Text style={styles.rosterName}>{item.name}</Text>
-            {item.isCaptain && (
-                <Text style={styles.captainTag}>선장</Text>
-            )}
-            {item.isSailor && (
-                <Text style={styles.sailorTag}>선원</Text>
-            )}
-            {!item.hasRoster && (
-                <Text style={styles.noRosterTag}>명부 없음</Text>
-            )}
-          </View>
-          <View style={styles.rosterDetails}>
-            <View style={styles.rosterDetailRow}>
-              <Text style={styles.rosterDetail}>{item.birth} (</Text>
-              {item.gender ? (
-                  <Text style={styles.rosterDetail}>{item.gender}</Text>
-              ) : (
-                  <Text style={styles.missingValueBadge}>미입력</Text>
+      <View style={[
+        styles.rosterItem,
+        item.isCaptain ? styles.captainRosterItem : null,
+        item.isSailor ? styles.sailorRosterItem : null
+      ]}>
+        <TouchableOpacity
+            style={styles.rosterItemTouchable}
+            onPress={() => handleRosterItemPress(item)}
+        >
+          <View style={styles.rosterItemContent}>
+            <View style={styles.nameContainer}>
+              <Text style={styles.rosterName}>{item.name}</Text>
+              {item.isCaptain && (
+                  <Text style={styles.captainTag}>선장</Text>
               )}
-              <Text style={styles.rosterDetail}>)</Text>
-            </View>
-            <View style={styles.rosterDetailRow}>
-              {item.phone ? (
-                  <Text style={styles.rosterDetail}>{item.phone}</Text>
-              ) : (
-                  <Text style={styles.missingValueBadge}>미입력</Text>
+              {item.isSailor && (
+                  <Text style={styles.sailorTag}>선원</Text>
+              )}
+              {!item.hasRoster && (
+                  <Text style={styles.noRosterTag}>명부 없음</Text>
               )}
             </View>
+            <View style={styles.rosterDetails}>
+              <View style={styles.rosterDetailRow}>
+                <Text style={styles.rosterDetail}>{item.birth} (</Text>
+                {item.gender ? (
+                    <Text style={styles.rosterDetail}>{item.gender}</Text>
+                ) : (
+                    <Text style={styles.missingValueBadge}>미입력</Text>
+                )}
+                <Text style={styles.rosterDetail}>)</Text>
+              </View>
+              <View style={styles.rosterDetailRow}>
+                {item.phone ? (
+                    <Text style={styles.rosterDetail}>{item.phone}</Text>
+                ) : (
+                    <Text style={styles.missingValueBadge}>미입력</Text>
+                )}
+              </View>
+            </View>
           </View>
-        </View>
-        <Ionicons name="chevron-forward" size={20} color="#999" />
-      </TouchableOpacity>
+          <Ionicons name="chevron-forward" size={20} color="#999" />
+        </TouchableOpacity>
+        
+      </View>
   );
 
   return (
@@ -606,12 +634,149 @@ export default function RosterListScreen() {
                   </View>
               )}
 
-              <TouchableOpacity
-                  style={styles.closeButton}
-                  onPress={() => setModalVisible(false)}
-              >
-                <Text style={styles.closeButtonText}>닫기</Text>
-              </TouchableOpacity>
+              <View style={styles.modalButtonsContainer}>
+                <TouchableOpacity
+                    style={styles.modalCloseButton}
+                    onPress={() => setModalVisible(false)}
+                >
+                  <Text style={styles.modalButtonText}>닫기</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                    style={styles.modalEditButton}
+                    onPress={() => {
+                      if (selectedRoster) {
+                        // Navigate to boarding form with the selected roster's data
+                        router.push({
+                          pathname: '/boarding-form',
+                          params: {
+                            uuid: selectedRoster.id,
+                            name: selectedRoster.name,
+                            dob: selectedRoster.birth,
+                            returnTo: 'roster-list',
+                            date,
+                            dateDisplay,
+                            tripNumber
+                          }
+                        });
+                        setModalVisible(false);
+                      }
+                    }}
+                >
+                  <Text style={styles.modalButtonText}>수정</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                    style={styles.modalDeleteButton}
+                    onPress={() => {
+                      if (selectedRoster) {
+                        Alert.alert(
+                          '명부 삭제',
+                          `${selectedRoster.name}님을 명부에서 삭제하시겠습니까?`,
+                          [
+                            {
+                              text: '취소',
+                              style: 'cancel'
+                            },
+                            {
+                              text: '삭제',
+                              style: 'destructive',
+                              onPress: () => {
+                                // Remove the member from the roster
+                                removeMemberFromRoster(selectedRoster.id);
+                                setModalVisible(false);
+                              }
+                            }
+                          ]
+                        );
+                      }
+                    }}
+                >
+                  <Text style={styles.modalButtonText}>삭제</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+        
+        {/* No Roster Modal */}
+        <Modal
+            animationType="slide"
+            transparent={true}
+            visible={noRosterModalVisible}
+            onRequestClose={() => setNoRosterModalVisible(false)}
+        >
+          <View style={styles.modalContainer}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>명부 정보 없음</Text>
+              
+              {selectedRoster && (
+                <Text style={styles.modalText}>
+                  {selectedRoster.name}님의 명부 정보가 없습니다.
+                </Text>
+              )}
+              
+              <View style={styles.modalButtonsContainer}>
+                <TouchableOpacity
+                    style={styles.modalCloseButton}
+                    onPress={() => setNoRosterModalVisible(false)}
+                >
+                  <Text style={styles.modalButtonText}>닫기</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                    style={styles.modalDeleteButton}
+                    onPress={() => {
+                      if (selectedRoster) {
+                        Alert.alert(
+                          '명부 삭제',
+                          `${selectedRoster.name}님을 명부에서 삭제하시겠습니까?`,
+                          [
+                            {
+                              text: '취소',
+                              style: 'cancel'
+                            },
+                            {
+                              text: '삭제',
+                              style: 'destructive',
+                              onPress: () => {
+                                // Remove the member from the roster
+                                removeMemberFromRoster(selectedRoster.id);
+                                setNoRosterModalVisible(false);
+                              }
+                            }
+                          ]
+                        );
+                      }
+                    }}
+                >
+                  <Text style={styles.modalButtonText}>삭제</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                    style={styles.modalCreateButton}
+                    onPress={() => {
+                      if (selectedRoster) {
+                        // Navigate to boarding form to create roster
+                        router.push({
+                          pathname: '/boarding-form',
+                          params: {
+                            uuid: selectedRoster.id,
+                            name: selectedRoster.name,
+                            dob: selectedRoster.birth,
+                            returnTo: 'roster-list',
+                            date,
+                            dateDisplay,
+                            tripNumber: tripNum
+                          }
+                        });
+                        setNoRosterModalVisible(false);
+                      }
+                    }}
+                >
+                  <Text style={styles.modalButtonText}>명부 작성</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </Modal>
@@ -752,9 +917,9 @@ export default function RosterListScreen() {
                 <TouchableOpacity
                     style={styles.addButton}
                     onPress={() => {
-                      // Navigate to a form or modal to add a member manually
+                      // Navigate to member search and registration screen
                       router.push({
-                        pathname: '/(app)/add-member' as any,
+                        pathname: '/roster-member-search',
                         params: {
                           date,
                           dateDisplay,
@@ -766,7 +931,7 @@ export default function RosterListScreen() {
                       });
                     }}
                 >
-                  <Text style={styles.buttonText}>신규 추가</Text>
+                  <Text style={styles.buttonText}>추가</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -867,7 +1032,6 @@ const styles = StyleSheet.create({
   rosterItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     backgroundColor: 'white',
     padding: 16,
     borderRadius: 8,
@@ -877,6 +1041,16 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 2,
+  },
+  rosterItemTouchable: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  deleteItemButton: {
+    padding: 10,
+    marginLeft: 10,
   },
   captainRosterItem: {
     backgroundColor: '#e3f2fd', // Light blue background for captains
@@ -1051,6 +1225,55 @@ const styles = StyleSheet.create({
     color: '#666',
     flex: 1,
     fontFamily: "GiantRegular"
+  },
+  modalButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 10,
+  },
+  modalCloseButton: {
+    flex: 1,
+    backgroundColor: '#2196F3',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginRight: 5,
+  },
+  modalDeleteButton: {
+    flex: 1,
+    backgroundColor: '#f44336',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginLeft: 5,
+  },
+  modalEditButton: {
+    flex: 1,
+    backgroundColor: '#FF9800',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginHorizontal: 5,
+  },
+  modalCreateButton: {
+    flex: 1,
+    backgroundColor: '#4caf50',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginLeft: 5,
+  },
+  modalButtonText: {
+    fontSize: 16,
+    color: '#fff',
+    fontFamily: "GiantRegular"
+  },
+  modalText: {
+    fontSize: 16,
+    fontFamily: "GiantRegular",
+    color: '#666',
+    marginBottom: 16,
+    textAlign: 'center',
   },
   closeButton: {
     backgroundColor: '#2196F3',

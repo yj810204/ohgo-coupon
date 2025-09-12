@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView, ActivityIndicator, Image, ScrollView, Alert, Dimensions } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -6,8 +6,9 @@ import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, runOnJS } from 'react-native-reanimated';
-import { doc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { doc, getDoc, updateDoc, setDoc, deleteField } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '../firebase';
 
 export default function RosterPreviewScreen() {
   const router = useRouter();
@@ -21,6 +22,7 @@ export default function RosterPreviewScreen() {
   const [isOfflineMode, setIsOfflineMode] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [isConfirmed, setIsConfirmed] = useState(false);
+  const [imageAvailable, setImageAvailable] = useState(false);
   const MAX_RETRIES = 3; // Maximum number of retry attempts
   
   // Gesture and animation values for pinch zoom and pan
@@ -137,12 +139,12 @@ export default function RosterPreviewScreen() {
       gestures.doubleTap
     )
   ).current;
-  
+
   // First mount initialization
   useEffect(() => {
     // Initialize gesture handlers on first mount
     console.log('Initializing gesture handlers on first mount');
-    
+
     // Pre-initialize the gesture system with more aggressive initialization
     // This helps ensure the gesture system is fully activated and responsive
     const timer1 = setTimeout(() => {
@@ -151,7 +153,7 @@ export default function RosterPreviewScreen() {
         scale.value = withTiming(1, { duration: 5 });
       });
     }, 50);
-    
+
     // Second initialization to ensure pan gesture is responsive
     const timer2 = setTimeout(() => {
       // Trigger small translations to initialize pan gesture handling
@@ -162,12 +164,12 @@ export default function RosterPreviewScreen() {
         translateY.value = withTiming(0, { duration: 5 });
       });
     }, 100);
-    
+
     // Cleanup function to prevent memory leaks
     return () => {
       clearTimeout(timer1);
       clearTimeout(timer2);
-      
+
       // Reset all animation values when component unmounts
       scale.value = 1;
       savedScale.value = 1;
@@ -175,7 +177,7 @@ export default function RosterPreviewScreen() {
       translateY.value = 0;
       savedTranslateX.value = 0;
       savedTranslateY.value = 0;
-      
+
       // Also reset React state
       setIsZoomed(false);
       setImageError(false);
@@ -198,22 +200,22 @@ export default function RosterPreviewScreen() {
     // Reset zoom state and ensure isZoomed is false
     resetZoomState();
     setIsZoomed(false);
-    
+
     // Reset error state when a new image is set
     setImageError(false);
-    
+
     // Force gesture handler initialization
     if (localImageUri) {
       // Log the new image URI being loaded
       console.log('Initializing with image URI:', localImageUri);
-      
+
       // Immediate initialization to ensure gestures are ready as soon as possible
       const immediateTimer = setTimeout(() => {
         // Trigger small animations to ensure gesture handlers are properly initialized
         scale.value = withTiming(1.01, { duration: 5 }, () => {
           scale.value = withTiming(1, { duration: 5 });
         });
-        
+
         // Also initialize pan gesture
         translateX.value = withTiming(1, { duration: 5 }, () => {
           translateX.value = withTiming(0, { duration: 5 });
@@ -222,7 +224,7 @@ export default function RosterPreviewScreen() {
           translateY.value = withTiming(0, { duration: 5 });
         });
       }, 50);
-      
+
       // Secondary initialization after image is likely rendered
       const secondaryTimer = setTimeout(() => {
         // Repeat initialization to ensure gesture system is fully activated
@@ -233,7 +235,7 @@ export default function RosterPreviewScreen() {
           translateX.value = withTiming(0, { duration: 5 });
         });
       }, 300);
-      
+
       return () => {
         clearTimeout(immediateTimer);
         clearTimeout(secondaryTimer);
@@ -241,20 +243,67 @@ export default function RosterPreviewScreen() {
     }
   }, [localImageUri]);
 
+  // Function to check if the image is available on the server
+  const checkImageAvailability = useCallback(async () => {
+    if (!date || !tripNumber || !imageUri) return false;
+
+    try {
+      // First check if the image is already available locally
+      if (localImageUri && !imageError) {
+        console.log('Image already available locally');
+        return true;
+      }
+
+      console.log('Checking if image is available in Firestore');
+      
+      // Try to fetch the trip data from Firestore to get the latest image URL
+      const dateStr = date as string;
+      const tripNum = parseInt(tripNumber as string, 10);
+      const tripKey = `trip${tripNum}` as `trip${number}`;
+
+      // Reference to the trips document for this date
+      const tripsDocRef = doc(db, 'trips', dateStr);
+      const tripsDocSnap = await getDoc(tripsDocRef);
+
+      if (tripsDocSnap.exists()) {
+        const data = tripsDocSnap.data();
+        // Check if this trip has an image URL
+        if (data[tripKey] && data[tripKey].rosterImageUrl) {
+          console.log('Found image URL in Firestore:', data[tripKey].rosterImageUrl);
+          
+          // If the image URL from Firestore is different from the one we have, update it
+          if (data[tripKey].rosterImageUrl !== imageUri) {
+            console.log('Updating image URI with the one from Firestore');
+            setLocalImageUri(data[tripKey].rosterImageUrl);
+          }
+          
+          return true;
+        } else {
+          console.log('No image URL found in Firestore yet');
+        }
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('Error checking image availability:', error);
+      return false;
+    }
+  }, [date, tripNumber, imageUri, localImageUri, imageError]);
+
   // Fetch trip confirmation status from Firestore
   useEffect(() => {
     const checkConfirmationStatus = async () => {
       if (!date || !tripNumber) return;
-      
+
       try {
         const dateStr = date as string;
         const tripNum = parseInt(tripNumber as string, 10);
         const tripKey = `trip${tripNum}` as `trip${number}`;
-        
+
         // Reference to the trips document for this date
         const tripsDocRef = doc(db, 'trips', dateStr);
         const tripsDocSnap = await getDoc(tripsDocRef);
-        
+
         if (tripsDocSnap.exists()) {
           const data = tripsDocSnap.data();
           // Check if this trip is confirmed
@@ -266,15 +315,35 @@ export default function RosterPreviewScreen() {
         console.error('Error checking confirmation status:', error);
       }
     };
-    
+
     checkConfirmationStatus();
   }, [date, tripNumber]);
+
+  // Image availability check (polling removed as it's no longer needed)
+  useEffect(() => {
+    const checkImage = async () => {
+      if (imageUri && !localImageUri && !imageAvailable) {
+        // Check once if the image is available in Firestore
+        const isAvailable = await checkImageAvailability();
+        
+        if (isAvailable) {
+          console.log('Image is available in Firestore');
+          setImageAvailable(true);
+          setImageError(false);
+        }
+      }
+    };
+    
+    checkImage();
+  }, [imageUri, localImageUri, imageAvailable, checkImageAvailability]);
 
   useEffect(() => {
     console.log('imageUri from params:', imageUri);
     // Reset retry count whenever the image URI changes
     setRetryCount(0);
-    
+    // Reset image state
+    setImageAvailable(false);
+
     if (imageUri) {
       // Firebase Storage URL 처리를 위한 로직 추가
       let uri = imageUri as string;
@@ -309,7 +378,7 @@ export default function RosterPreviewScreen() {
         // If the URI doesn't have a proper protocol, assume it's a file URI
         uri = `file://${uri}`;
       }
-      
+
       console.log('Setting image URI directly without cache parameters:', uri);
       setLocalImageUri(uri);
     } else {
@@ -410,55 +479,162 @@ export default function RosterPreviewScreen() {
     try {
       setSavingImage(true);
 
-      // No longer saving the image to gallery - directly using the URL
+      // Save the image to the device gallery
+      if (localImageUri) {
+        // Request permissions first
+        const hasPermission = await requestMediaLibraryPermissions();
+        if (hasPermission) {
+          try {
+            // Save the image to the gallery
+            const asset = await MediaLibrary.createAssetAsync(localImageUri);
+            await MediaLibrary.createAlbumAsync('OhGo', asset, false);
+            console.log('Image saved to gallery successfully');
+          } catch (error) {
+            console.error('Error saving image to gallery:', error);
+            // Continue with confirmation even if gallery save fails
+          }
+        }
 
-      // Store the confirmation flag in the database
-      const dateStr = date as string;
-      const tripNum = parseInt(tripNumber as string, 10);
-      
-      // Reference to the trips document for this date
-      const tripsDocRef = doc(db, 'trips', dateStr);
-      
-      // Check if the document exists
-      const tripsDocSnap = await getDoc(tripsDocRef);
-      
-      // Define the trip key and trip data with proper typing
-      const tripKey = `trip${tripNum}` as `trip${number}`;
-      
-      // Define the trip data type
-      interface TripData {
-        confirmed: boolean;
-        confirmedAt: string;
-      }
-      
-      // Define the document data type with index signature for dynamic trip keys
-      interface TripsDocData {
-        [key: `trip${number}`]: TripData;
-      }
-      
-      if (tripsDocSnap.exists()) {
-        // Update the existing document
-        const updatedData: Partial<TripsDocData> = {
-          [tripKey]: {
-            confirmed: true,
-            confirmedAt: new Date().toISOString()
+        // Upload the image to Firebase Storage
+        try {
+          const response = await fetch(localImageUri);
+          const blob = await response.blob();
+
+          // Create a reference to the storage location
+          const dateStr = date as string;
+          const tripNum = parseInt(tripNumber as string, 10);
+          const imagePath = `rosters/${dateStr}/trip${tripNum}.jpg`;
+          const storageRef = ref(storage, imagePath);
+
+          // Upload the image
+          await uploadBytes(storageRef, blob);
+
+          // Get the download URL
+          const downloadURL = await getDownloadURL(storageRef);
+          console.log('Image uploaded to Firebase Storage successfully:', downloadURL);
+
+          // Store the confirmation flag and image paths in the database
+          const tripsDocRef = doc(db, 'trips', dateStr);
+          
+          // Check if the document exists
+          const tripsDocSnap = await getDoc(tripsDocRef);
+          
+          // Define the trip key and trip data with proper typing
+          const tripKey = `trip${tripNum}` as `trip${number}`;
+          
+          // Define the trip data type
+          interface TripData {
+            confirmed: boolean;
+            confirmedAt: string;
+            rosterImagePath?: string;
+            rosterImageUrl?: string;
           }
-        };
-        
-        await updateDoc(tripsDocRef, updatedData);
-      } else {
-        // Create a new document
-        const newData: TripsDocData = {
-          [tripKey]: {
-            confirmed: true,
-            confirmedAt: new Date().toISOString()
+          
+          // Define the document data type with index signature for dynamic trip keys
+          interface TripsDocData {
+            [key: `trip${number}`]: TripData;
           }
-        };
+          
+          if (tripsDocSnap.exists()) {
+            // Update the existing document
+            const updatedData: Partial<TripsDocData> = {
+              [tripKey]: {
+                confirmed: true,
+                confirmedAt: new Date().toISOString(),
+                rosterImagePath: imagePath,
+                rosterImageUrl: downloadURL
+              }
+            };
+            
+            await updateDoc(tripsDocRef, updatedData);
+          } else {
+            // Create a new document
+            const newData: TripsDocData = {
+              [tripKey]: {
+                confirmed: true,
+                confirmedAt: new Date().toISOString(),
+                rosterImagePath: imagePath,
+                rosterImageUrl: downloadURL
+              }
+            };
+            
+            await setDoc(tripsDocRef, newData);
+          }
+        } catch (error) {
+          console.error('Error uploading image to Firebase Storage:', error);
+          // Continue with confirmation even if image upload fails
+        }
+      }
+
+      // If we don't have a localImageUri, just update the confirmation status
+      else {
+        // Store the confirmation flag in the database
+        const dateStr = date as string;
+        const tripNum = parseInt(tripNumber as string, 10);
         
-        await setDoc(tripsDocRef, newData);
+        // Reference to the trips document for this date
+        const tripsDocRef = doc(db, 'trips', dateStr);
+        
+        // Check if the document exists
+        const tripsDocSnap = await getDoc(tripsDocRef);
+        
+        // Define the trip key and trip data with proper typing
+        const tripKey = `trip${tripNum}` as `trip${number}`;
+        
+        // Define the trip data type
+        interface TripData {
+          confirmed: boolean;
+          confirmedAt: string;
+        }
+        
+        // Define the document data type with index signature for dynamic trip keys
+        interface TripsDocData {
+          [key: `trip${number}`]: TripData;
+        }
+        
+        if (tripsDocSnap.exists()) {
+          // Update the existing document
+          const updatedData: Partial<TripsDocData> = {
+            [tripKey]: {
+              confirmed: true,
+              confirmedAt: new Date().toISOString()
+            }
+          };
+          
+          await updateDoc(tripsDocRef, updatedData);
+        } else {
+          // Create a new document
+          const newData: TripsDocData = {
+            [tripKey]: {
+              confirmed: true,
+              confirmedAt: new Date().toISOString()
+            }
+          };
+          
+          await setDoc(tripsDocRef, newData);
+        }
       }
       
-      Alert.alert('성공', '출항이 확정되었습니다.');
+      // Delete members field from the attendance document for the current day to prevent duplication in next voyage
+      try {
+        const dateStr = date as string;
+        const attendanceRef = doc(db, 'attendance', dateStr);
+        const attendanceSnap = await getDoc(attendanceRef);
+        
+        if (attendanceSnap.exists()) {
+          // Delete the members field from the attendance document instead of setting it to an empty array
+          // This ensures that QR-scanned members for the next voyage won't be lost
+          await updateDoc(attendanceRef, {
+            members: deleteField()
+          });
+          console.log('Members field deleted from attendance document for date:', dateStr);
+        }
+      } catch (error) {
+        console.error('Error deleting members field from attendance document:', error);
+        // Continue with confirmation even if deleting members field fails
+      }
+      
+      Alert.alert('성공', '출항이 확정되었습니다. 승선명부 이미지가 갤러리와 서버에 저장되었습니다.');
       
       // Navigate back to today-roster screen with refresh
       router.replace('/today-roster');
@@ -478,12 +654,7 @@ export default function RosterPreviewScreen() {
         <Text style={styles.headerTitle}>명부 이미지 미리보기</Text>
       </View>
 
-      <ScrollView 
-        ref={scrollViewRef}
-        style={styles.contentContainer}
-        scrollEnabled={!isZoomed} // Disable scrolling when zoomed in to prevent gesture conflicts
-        contentContainerStyle={{ flexGrow: 1 }}
-      >
+      <View style={styles.contentContainer}>
         {localImageUri ? (
           <View style={styles.imageContainer}>
             <GestureDetector gesture={combinedGestures}>
@@ -495,6 +666,10 @@ export default function RosterPreviewScreen() {
                   onLoadStart={() => console.log('Image load started:', localImageUri)}
                   onLoad={() => {
                     console.log('Image loaded successfully:', localImageUri);
+                    // Mark image as available when it loads successfully
+                    setImageAvailable(true);
+                    setImageError(false);
+                    
                     // Initialize gestures immediately when image loads
                     // This ensures gestures are responsive as soon as the image is visible
                     scale.value = withTiming(1.01, { duration: 5 }, () => {
@@ -542,7 +717,6 @@ export default function RosterPreviewScreen() {
                       }
                     }
                     
-                    // If all attempts fail, set error state
                     console.log('Could not display image, setting error state');
                     setImageError(true);
                   }}
@@ -560,6 +734,7 @@ export default function RosterPreviewScreen() {
                 // Reset error state and retry count for manual retry
                 setImageError(false);
                 setRetryCount(0);
+                setImageAvailable(false);
                 
                 // Try loading the image again with the original URL
                 if (imageUri && typeof imageUri === 'string') {
@@ -580,10 +755,11 @@ export default function RosterPreviewScreen() {
           </View>
         ) : (
           <View style={styles.noImageContainer}>
+            <ActivityIndicator size="large" color="#1e88e5" style={styles.loadingIndicator} />
             <Text style={styles.noImageText}>이미지를 불러오는 중...</Text>
           </View>
         )}
-      </ScrollView>
+      </View>
 
       <View style={styles.buttonContainer}>
         <TouchableOpacity
@@ -661,6 +837,9 @@ const styles = StyleSheet.create({
     borderColor: '#e0e0e0',
     marginBottom: 16,
   },
+  loadingIndicator: {
+    marginBottom: 16,
+  },
   noImageText: {
     fontSize: 16,
     fontFamily: "GiantRegular",
@@ -673,6 +852,7 @@ const styles = StyleSheet.create({
     color: '#999',
     textAlign: 'center',
     paddingHorizontal: 20,
+    marginBottom: 8,
   },
   buttonContainer: {
     flexDirection: 'row',
