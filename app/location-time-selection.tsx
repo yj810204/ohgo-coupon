@@ -8,6 +8,7 @@ import { db } from '../firebase';
 import ViewShot from 'react-native-view-shot';
 import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type RosterItem = {
   id: string;
@@ -22,6 +23,9 @@ type RosterItem = {
   isSailor?: boolean;
   role?: string;
 };
+
+// Key for storing font size preference in AsyncStorage
+const FONT_SIZE_STORAGE_KEY = 'roster_font_size_preference';
 
 // A4 용지 비율에 맞는 크기 설정
 const A4_WIDTH = 794;
@@ -43,6 +47,30 @@ export default function LocationTimeSelectionScreen() {
   const [desc01, setDesc01] = useState<string>('');
   const [desc02, setDesc02] = useState<string>('');
   const [onBoard, setOnBoard] = useState<boolean>(false);
+  const [selectedFontSize, setSelectedFontSize] = useState<string>('medium');
+
+  // Function to save font size preference to AsyncStorage
+  const saveFontSizePreference = async (fontSize: string) => {
+    try {
+      await AsyncStorage.setItem(FONT_SIZE_STORAGE_KEY, fontSize);
+      console.log('Font size preference saved:', fontSize);
+    } catch (error) {
+      console.error('Error saving font size preference:', error);
+    }
+  };
+
+  // Function to load font size preference from AsyncStorage
+  const loadFontSizePreference = async () => {
+    try {
+      const savedFontSize = await AsyncStorage.getItem(FONT_SIZE_STORAGE_KEY);
+      if (savedFontSize !== null) {
+        console.log('Loaded font size preference:', savedFontSize);
+        setSelectedFontSize(savedFontSize);
+      }
+    } catch (error) {
+      console.error('Error loading font size preference:', error);
+    }
+  };
 
   const viewShotRef = useRef<ViewShot>(null);
 
@@ -79,6 +107,8 @@ export default function LocationTimeSelectionScreen() {
       const tripAlreadyMade = await checkTripStatus();
       if (!tripAlreadyMade) {
         loadLocations();
+        // Load saved font size preference
+        await loadFontSizePreference();
         if (rosterItemsJson) {
           try {
             const parsedRosterItems = JSON.parse(rosterItemsJson as string) as RosterItem[];
@@ -184,7 +214,12 @@ export default function LocationTimeSelectionScreen() {
 
         router.push({
           pathname: '/roster-preview',
-          params: { imageUri: cacheUri, date: date, tripNumber: params.tripNumber },
+          params: { 
+            imageUri: cacheUri, 
+            date: date, 
+            tripNumber: params.tripNumber,
+            fontSize: selectedFontSize 
+          },
         });
       }
     } catch (error) {
@@ -195,6 +230,20 @@ export default function LocationTimeSelectionScreen() {
     }
   };
 
+  // Font size mapping for roster list text
+  const getFontSize = (size: string) => {
+    switch(size) {
+      case 'small': return 8;
+      case 'medium': return 10; // Default size
+      case 'large': return 12;
+      case 'xlarge': return 14;
+      default: return 10;
+    }
+  };
+
+  // Get cell font size based on selected font size
+  const cellFontSize = getFontSize(selectedFontSize);
+  
   // ✅ A4 양식 렌더링을 위한 JSX (출력 부분만 수정)
   const renderA4Roster = () => (
       <View style={a4Styles.page}>
@@ -221,28 +270,28 @@ export default function LocationTimeSelectionScreen() {
           </View>
           {rosterItems.map((item, index) => (
               <View key={item.id} style={a4Styles.tableRow}>
-                <Text style={[a4Styles.cell, {width: '4%'}]}>{index + 1}</Text>
-                <Text style={[a4Styles.cell, {width: '10%'}]}>{item.name}</Text>
-                <Text style={[a4Styles.cell, {width: '14%'}]}>{item.birth}</Text>
-                <Text style={[a4Styles.cell, {width: '6%'}]}>{item.gender}</Text>
-                <Text style={[a4Styles.cell, a4Styles.addressCell, {width: '32%'}]}>{item.address}</Text>
-                <Text style={[a4Styles.cell, {width: '14%'}]}>{item.phone}</Text>
-                <Text style={[a4Styles.cell, {width: '14%'}]}>{item.emergency}</Text>
-                <Text style={[a4Styles.cell, {width: '6%', borderRightWidth: 0}]}>
+                <Text style={[a4Styles.cell, {width: '4%', fontSize: cellFontSize}]}>{index + 1}</Text>
+                <Text style={[a4Styles.cell, {width: '10%', fontSize: cellFontSize}]}>{item.name}</Text>
+                <Text style={[a4Styles.cell, {width: '14%', fontSize: cellFontSize}]}>{item.birth}</Text>
+                <Text style={[a4Styles.cell, {width: '6%', fontSize: cellFontSize}]}>{item.gender}</Text>
+                <Text style={[a4Styles.cell, a4Styles.addressCell, {width: '32%', fontSize: cellFontSize}]}>{item.address}</Text>
+                <Text style={[a4Styles.cell, {width: '14%', fontSize: cellFontSize}]}>{item.phone}</Text>
+                <Text style={[a4Styles.cell, {width: '14%', fontSize: cellFontSize}]}>{item.emergency}</Text>
+                <Text style={[a4Styles.cell, {width: '6%', borderRightWidth: 0, fontSize: cellFontSize}]}>
                   {item.role === 'captain' ? '선장' : item.role === 'sailor' ? '선원' : ''}
                 </Text>
               </View>
           ))}
           {Array.from({ length: Math.max(0, 15 - rosterItems.length) }).map((_, index) => (
               <View key={`empty-${index}`} style={a4Styles.tableRow}>
-                <Text style={[a4Styles.cell, {width: '4%'}]}></Text>
-                <Text style={[a4Styles.cell, {width: '10%'}]}></Text>
-                <Text style={[a4Styles.cell, {width: '14%'}]}></Text>
-                <Text style={[a4Styles.cell, {width: '6%'}]}></Text>
-                <Text style={[a4Styles.cell, {width: '32%'}]}></Text>
-                <Text style={[a4Styles.cell, {width: '14%'}]}></Text>
-                <Text style={[a4Styles.cell, {width: '14%'}]}></Text>
-                <Text style={[a4Styles.cell, {width: '6%', borderRightWidth: 0}]}></Text>
+                <Text style={[a4Styles.cell, {width: '4%', fontSize: cellFontSize}]}></Text>
+                <Text style={[a4Styles.cell, {width: '10%', fontSize: cellFontSize}]}></Text>
+                <Text style={[a4Styles.cell, {width: '14%', fontSize: cellFontSize}]}></Text>
+                <Text style={[a4Styles.cell, {width: '6%', fontSize: cellFontSize}]}></Text>
+                <Text style={[a4Styles.cell, {width: '32%', fontSize: cellFontSize}]}></Text>
+                <Text style={[a4Styles.cell, {width: '14%', fontSize: cellFontSize}]}></Text>
+                <Text style={[a4Styles.cell, {width: '14%', fontSize: cellFontSize}]}></Text>
+                <Text style={[a4Styles.cell, {width: '6%', borderRightWidth: 0, fontSize: cellFontSize}]}></Text>
               </View>
           ))}
         </View>
@@ -287,6 +336,43 @@ export default function LocationTimeSelectionScreen() {
                   <Picker selectedValue={selectedTime} onValueChange={(itemValue) => setSelectedTime(itemValue)} style={styles.picker}>
                     {hours.map((hour) => <Picker.Item key={hour} label={`${hour}시`} value={hour} />)}
                   </Picker>
+                </View>
+              </View>
+              <View style={styles.sectionContainer}>
+                <Text style={styles.sectionTitle}>글자크기</Text>
+                <View style={styles.fontSizeContainer}>
+                  <TouchableOpacity 
+                    style={[styles.fontSizeButton, selectedFontSize === 'small' && styles.fontSizeButtonSelected]} 
+                    onPress={() => {
+                      setSelectedFontSize('small');
+                      saveFontSizePreference('small');
+                    }}>
+                    <Text style={[styles.fontSizeButtonText, selectedFontSize === 'small' && styles.fontSizeButtonTextSelected]}>작게</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.fontSizeButton, selectedFontSize === 'medium' && styles.fontSizeButtonSelected]} 
+                    onPress={() => {
+                      setSelectedFontSize('medium');
+                      saveFontSizePreference('medium');
+                    }}>
+                    <Text style={[styles.fontSizeButtonText, selectedFontSize === 'medium' && styles.fontSizeButtonTextSelected]}>보통</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.fontSizeButton, selectedFontSize === 'large' && styles.fontSizeButtonSelected]} 
+                    onPress={() => {
+                      setSelectedFontSize('large');
+                      saveFontSizePreference('large');
+                    }}>
+                    <Text style={[styles.fontSizeButtonText, selectedFontSize === 'large' && styles.fontSizeButtonTextSelected]}>크게</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.fontSizeButton, selectedFontSize === 'xlarge' && styles.fontSizeButtonSelected]} 
+                    onPress={() => {
+                      setSelectedFontSize('xlarge');
+                      saveFontSizePreference('xlarge');
+                    }}>
+                    <Text style={[styles.fontSizeButtonText, selectedFontSize === 'xlarge' && styles.fontSizeButtonTextSelected]}>아주크게</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             </ScrollView>
@@ -343,9 +429,14 @@ const styles = StyleSheet.create({
   locationItemSelected:{backgroundColor:'#1e88e5',borderColor:'#1565c0'},
   locationItemText:{fontSize:14,fontFamily:"GiantRegular",color:'#333'},
   locationItemTextSelected:{color:'white'},
+  fontSizeContainer:{flexDirection:'row',justifyContent:'space-between',marginTop:8},
+  fontSizeButton:{flex:1,backgroundColor:'#f0f0f0',borderRadius:8,paddingVertical:10,paddingHorizontal:8,margin:4,borderWidth:1,borderColor:'#e0e0e0',alignItems:'center'},
+  fontSizeButtonSelected:{backgroundColor:'#1e88e5',borderColor:'#1565c0'},
+  fontSizeButtonText:{fontSize:14,fontFamily:"GiantRegular",color:'#333',textAlign:'center'},
+  fontSizeButtonTextSelected:{color:'white'},
   buttonContainer:{flexDirection:'row',justifyContent:'space-between',backgroundColor:'white',padding:16,borderTopWidth:1,borderTopColor:'#e0e0e0',shadowColor:'#000',shadowOffset:{width:0,height:-2},shadowOpacity:0.1,shadowRadius:4,elevation:5},
-  backButton:{flex:1,backgroundColor:'#6c757d',paddingVertical:12,borderRadius:8,alignItems:'center',marginRight:8},
-  nextButton:{flex:1,backgroundColor:'#007bff',paddingVertical:12,borderRadius:8,alignItems:'center',marginLeft:8},
+  backButton:{flex:1,backgroundColor:'#9e9e9e',paddingVertical:12,borderRadius:8,alignItems:'center',marginRight:8},
+  nextButton:{flex:1,backgroundColor:'#1e88e5',paddingVertical:12,borderRadius:8,alignItems:'center',marginLeft:8},
   buttonText:{color:'white',fontSize:16,fontFamily:"GiantRegular"},
   requiredAsterisk:{color:'#f44336',fontSize:16,fontWeight:'bold'}
 });

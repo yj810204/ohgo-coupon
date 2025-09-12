@@ -383,7 +383,7 @@ export default function TodayRosterScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
-              {tempSelectedDate ? format(tempSelectedDate, 'yyyy년 MM월 dd일') : ''} 항차 선택
+              {tempSelectedDate ? format(tempSelectedDate, 'yyyy년 MM월 dd일') : ''}
             </Text>
             
             <View style={styles.tripButtonsContainer}>

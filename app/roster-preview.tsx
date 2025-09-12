@@ -13,7 +13,10 @@ import { db, storage } from '../firebase';
 export default function RosterPreviewScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { imageUri, date, tripNumber } = params;
+  const { imageUri, date, tripNumber, fontSize } = params;
+  
+  // Font size state with default value 'medium'
+  const [fontSizeStyle, setFontSizeStyle] = useState<string>(fontSize as string || 'medium');
   
   const [savingImage, setSavingImage] = useState(false);
   const [localImageUri, setLocalImageUri] = useState<string | null>(null);
@@ -787,6 +790,17 @@ export default function RosterPreviewScreen() {
     </SafeAreaView>
   );
 }
+
+// Font size mapping for roster list text
+const getFontSize = (size: string) => {
+  switch(size) {
+    case 'small': return 8;
+    case 'medium': return 10; // Default size
+    case 'large': return 12;
+    case 'xlarge': return 14;
+    default: return 10;
+  }
+};
 
 const styles = StyleSheet.create({
   container: {

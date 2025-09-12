@@ -1154,7 +1154,7 @@ const styles = StyleSheet.create({
   },
   addButton: {
     flex: 1,
-    backgroundColor: '#1e88e5',
+    backgroundColor: '#4caf50',
     paddingVertical: 10,
     borderRadius: 8,
     alignItems: 'center',
@@ -1162,7 +1162,7 @@ const styles = StyleSheet.create({
   },
   nextButton: {
     flex: 1,
-    backgroundColor: '#4caf50',
+    backgroundColor: '#1e88e5',
     paddingVertical: 10,
     borderRadius: 8,
     alignItems: 'center',
@@ -1170,7 +1170,7 @@ const styles = StyleSheet.create({
   },
   previousButton: {
     flex: 1,
-    backgroundColor: '#f44336',
+    backgroundColor: '#9e9e9e',
     paddingVertical: 10,
     borderRadius: 8,
     alignItems: 'center',
