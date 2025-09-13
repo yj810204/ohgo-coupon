@@ -146,41 +146,22 @@ export default function QRScanScreen() {
       // ✅ QR 코드 유효성 검사 및 적립
       if (data === 'OHGO-STAMP-BOAT19033326262005') {
         try {
+          // addStamp가 백엔드 함수를 트리거하여 모든 로직을 처리하도록 합니다.
+          // 클라이언트 측 트랜잭션을 제거하여 중복 실행을 방지합니다.
           await withTimeout(addStamp(String(uuid)), 5000);
 
-          // 이 방식을 사용하면 여러 작업을 안전하게 한 번에 처리할 수 있습니다.
-          await runTransaction(db, async (transaction) => {
-            const today = new Date().toISOString().split('T')[0]; // 'YYYY-MM-DD' 형식
+          console.log('✅ 스탬프가 성공적으로 요청되었습니다. 서버에서 처리됩니다.');
 
-            const userRef = doc(db, 'users', String(uuid));
-            const couponLogRef = doc(db, `users/${uuid}/baitCouponLogs`, today);
-            const attendanceRef = doc(db, 'attendance', today);
+          // 푸시 알림 등 후속 처리는 Firebase Function에서 담당하므로 클라이언트 호출은 제거합니다.
+          // await handleRequestToCaptains(name, uuid, dob);
 
-            // 1. 미끼 교환권 1장 지급
-            transaction.update(userRef, { baitCoupons: increment(1) });
-
-            // 2. 교환권 지급 로그(영수증) 생성
-            transaction.set(couponLogRef, {
-              awardedAt: new Date(),
-              reason: 'QR Scan Stamp',
-            });
-
-            // 3. 승선 명부에 회원 추가 (기존 addMemberToAttendanceList 함수와 동일한 로직)
-            transaction.set(attendanceRef,
-                { members: arrayUnion(String(uuid)) }, // arrayUnion을 사용하면 중복 추가 방지
-                { merge: true }
-            );
-          });
-
-          console.log('✅ 스탬프 관련 모든 작업이 트랜잭션으로 성공적으로 처리되었습니다.');
-          
-          await handleRequestToCaptains(name, uuid, dob);
           return showMessageAndBack(
-            '스탬프가 적립되었어요!\n게임 미끼 교환권이 발행되었습니다.\n오늘도 즐거운 낚시 되세요 🎣',
-            '#4CAF50',
-            5000
+              '스탬프가 적립되었어요!\n게임 미끼 교환권이 발행되었습니다.\n오늘도 즐거운 낚시 되세요 🎣',
+              '#4CAF50',
+              5000
           );
-        } catch (e: any) {
+        } catch (e: any)
+        {
           console.error('❗ 오류:', e.message);
           return showMessageAndBack(`❗ 오류: ${e.message || '적립 실패'}`, '#f44336');
         }

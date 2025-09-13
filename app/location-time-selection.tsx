@@ -48,6 +48,13 @@ export default function LocationTimeSelectionScreen() {
   const [desc02, setDesc02] = useState<string>('');
   const [onBoard, setOnBoard] = useState<boolean>(false);
   const [selectedFontSize, setSelectedFontSize] = useState<string>('medium');
+  
+  // Function to check if selected time is earlier than current time (for next day indicator)
+  const isNextDay = () => {
+    const currentHour = new Date().getHours();
+    const selectedHour = parseInt(selectedTime);
+    return selectedHour < currentHour;
+  };
 
   // Function to save font size preference to AsyncStorage
   const saveFontSizePreference = async (fontSize: string) => {
@@ -298,7 +305,7 @@ export default function LocationTimeSelectionScreen() {
         <View style={a4Styles.footer}>
           {onBoard && <Text style={a4Styles.onBoardText}>선 상</Text>}
           <View style={a4Styles.infoRow}><Text style={a4Styles.infoLabel}>위       치 :</Text><Text style={a4Styles.infoValue}>{selectedLocations.join(', ')}</Text></View>
-          <View style={a4Styles.infoRow}><Text style={a4Styles.infoLabel}>입항시간 :</Text><Text style={a4Styles.infoValue}>{selectedTime} 시</Text></View>
+          <View style={a4Styles.infoRow}><Text style={a4Styles.infoLabel}>입항시간 :</Text><Text style={a4Styles.infoValue}>{isNextDay() ? `(익일) ${selectedTime}` : selectedTime} 시</Text></View>
           <Text style={a4Styles.footerDescription}>{desc02}</Text>
         </View>
       </View>
