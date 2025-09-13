@@ -401,7 +401,7 @@ const a4Styles = StyleSheet.create({
   table:{borderLeftWidth:1,borderRightWidth:1,borderColor:'#000',width:'100%'},
   tableHeader:{flexDirection:'row',backgroundColor:'#f0f0f0',borderBottomWidth:2,borderColor:'#000',borderTopWidth:1,},
   tableRow:{flexDirection:'row',borderBottomWidth:1,borderColor:'#000',height:40,maxHeight:40},
-  cell:{fontSize:10,padding:3,textAlign:'center',borderRightWidth:1,borderColor:'#000',alignItems:'center',justifyContent:'center',display:'flex'},
+  cell:{fontSize:10,paddingLeft:3,paddingRight:3,textAlign:'center',borderRightWidth:1,borderColor:'#000',alignItems:'center',justifyContent:'center',display:'flex'},
   headerCell:{fontWeight:'bold',fontSize:12},
   addressCell:{textAlign:'left',fontSize:10},
   footer:{marginTop:20,alignItems:'center'},
