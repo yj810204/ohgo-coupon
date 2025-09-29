@@ -115,6 +115,16 @@ export default function BoardingForm() {
         
         let userUuid = '';
         
+        // Check if logged-in user is admin
+        const loggedInUser = await getUser();
+        if (loggedInUser?.uuid) {
+          const loggedInUserDoc = await getDoc(doc(db, 'users', loggedInUser.uuid));
+          if (loggedInUserDoc.exists()) {
+            const loggedInUserData = loggedInUserDoc.data();
+            setIsAdmin(!!loggedInUserData.isAdmin);
+          }
+        }
+        
         // Load user data if UUID is provided
         if (uuid) {
           userUuid = uuid.toString();
@@ -130,13 +140,6 @@ export default function BoardingForm() {
             setAgreed(!!data.agreed);
             setAgreedThirdParty(!!data.agreedThirdParty);
             setRole(data.role || '');
-          }
-          
-          // Check if user is admin
-          const userDoc = await getDoc(doc(db, 'users', userUuid));
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
-            setIsAdmin(!!userData.isAdmin);
           }
         } else {
           // If no UUID provided, load logged-in user's data
@@ -155,13 +158,6 @@ export default function BoardingForm() {
               setAgreed(!!data.agreed);
               setAgreedThirdParty(!!data.agreedThirdParty);
               setRole(data.role || '');
-            }
-            
-            // Check if user is admin
-            const userDoc = await getDoc(doc(db, 'users', userUuid));
-            if (userDoc.exists()) {
-              const userData = userDoc.data();
-              setIsAdmin(!!userData.isAdmin);
             }
           }
         }
@@ -406,7 +402,7 @@ export default function BoardingForm() {
           </View>
           
           <View style={styles.field}>
-            <Text style={styles.label}>생년월일 * (YYYYMMDD)</Text>
+            <Text style={styles.label}>생년월일 *</Text>
             <TextInput
               style={styles.input}
               placeholder="예: 19900101"
@@ -417,7 +413,7 @@ export default function BoardingForm() {
           </View>
           
           <View style={styles.field}>
-            <Text style={styles.label}>성별</Text>
+            <Text style={styles.label}>성별 *</Text>
             <View style={styles.genderContainer}>
               <TouchableOpacity 
                 style={[
@@ -450,7 +446,6 @@ export default function BoardingForm() {
             <Text style={styles.label}>연락처 *</Text>
             <TextInput
               style={styles.input}
-              placeholder="010-1234-5678"
               value={phone}
               onChangeText={(text) => setPhone(formatPhoneNumber(text))}
               keyboardType="phone-pad"
@@ -458,10 +453,9 @@ export default function BoardingForm() {
           </View>
           
           <View style={styles.field}>
-            <Text style={styles.label}>비상 연락처</Text>
+            <Text style={styles.label}>비상 연락처 *</Text>
             <TextInput
               style={styles.input}
-              placeholder="예: 보호자 연락처"
               value={emergency}
               onChangeText={(text) => setEmergency(formatPhoneNumber(text))}
               keyboardType="phone-pad"
@@ -469,10 +463,9 @@ export default function BoardingForm() {
           </View>
           
           <View style={styles.field}>
-            <Text style={styles.label}>주소</Text>
+            <Text style={styles.label}>주소 *</Text>
             <TextInput
               style={styles.input}
-              placeholder="주소를 입력해주세요."
               value={address}
               onChangeText={setAddress}
             />

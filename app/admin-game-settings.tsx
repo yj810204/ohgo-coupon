@@ -32,6 +32,7 @@ export default function AdminGameSettingsScreen() {
   const [savingBaitPerCoupon, setSavingBaitPerCoupon] = useState(false);
   const [commonDistance, setCommonDistance] = useState('50'); // 기본값 50
   const [commonPoint, setCommonPoint] = useState('1000'); // 기본값 1000
+  const [deductionPoint, setDeductionPoint] = useState('300'); // 기본값 300 (차감 포인트)
   const [savingGameSettings, setSavingGameSettings] = useState(false);
 
   // 특별 버튼 표시 설정
@@ -40,6 +41,9 @@ export default function AdminGameSettingsScreen() {
   const [showDistanceButton, setShowDistanceButton] = useState(false);
   const [showBombButton, setShowBombButton] = useState(false);
   const [showPointButton, setShowPointButton] = useState(false);
+  
+  // 순위 메달 표시 설정 (1-3)
+  const [rankingMedalCount, setRankingMedalCount] = useState(3); // 기본값 3
 
   // Tournament data
   const [tournamentTitle, setTournamentTitle] = useState('');
@@ -110,6 +114,7 @@ export default function AdminGameSettingsScreen() {
         const data = gameSettingsDoc.data();
         setCommonDistance(data.distance?.toString() || '50');
         setCommonPoint(data.point?.toString() || '1000');
+        setDeductionPoint(data.deductionPoint?.toString() || '300');
         
         // 특별 버튼 표시 설정 불러오기
         setShowBaitButton(data.showBaitButton === true);
@@ -117,15 +122,24 @@ export default function AdminGameSettingsScreen() {
         setShowDistanceButton(data.showDistanceButton === true);
         setShowBombButton(data.showBombButton === true);
         setShowPointButton(data.showPointButton === true);
+        
+        // 순위 메달 표시 설정 불러오기
+        if (data.rankingMedalCount !== undefined) {
+          setRankingMedalCount(data.rankingMedalCount);
+        } else {
+          setRankingMedalCount(3); // 기본값 3
+        }
       } else {
         // 문서가 없으면 기본값 설정
         setCommonDistance('50');
         setCommonPoint('1000');
+        setDeductionPoint('300');
         setShowBaitButton(false);
         setShowCatchButton(false);
         setShowDistanceButton(false);
         setShowBombButton(false);
         setShowPointButton(false);
+        setRankingMedalCount(3); // 기본값 3
       }
     } catch (error) {
       console.error('Error fetching game settings:', error);
@@ -234,13 +248,14 @@ export default function AdminGameSettingsScreen() {
   };
   
   const saveGameSettings = async () => {
-    if (!commonDistance.trim() || !commonPoint.trim()) {
-      Alert.alert('입력 오류', '거리와 포인트 값을 모두 입력해주세요.');
+    if (!commonDistance.trim() || !commonPoint.trim() || !deductionPoint.trim()) {
+      Alert.alert('입력 오류', '거리, 포인트, 차감 포인트 값을 모두 입력해주세요.');
       return;
     }
 
     const distanceNumber = parseInt(commonDistance);
     const pointNumber = parseInt(commonPoint);
+    const deductionPointNumber = parseInt(deductionPoint);
     
     if (isNaN(distanceNumber) || distanceNumber <= 0) {
       Alert.alert('입력 오류', '거리는 양수여야 합니다.');
@@ -251,6 +266,11 @@ export default function AdminGameSettingsScreen() {
       Alert.alert('입력 오류', '포인트는 양수여야 합니다.');
       return;
     }
+    
+    if (isNaN(deductionPointNumber) || deductionPointNumber <= 0) {
+      Alert.alert('입력 오류', '차감 포인트는 양수여야 합니다.');
+      return;
+    }
 
     try {
       setSavingGameSettings(true);
@@ -258,12 +278,15 @@ export default function AdminGameSettingsScreen() {
       await setDoc(doc(db, 'gameSettings', 'fishing'), {
         distance: distanceNumber,
         point: pointNumber,
+        deductionPoint: deductionPointNumber,
         // 특별 버튼 표시 설정 저장
         showBaitButton: showBaitButton,
         showCatchButton: showCatchButton,
         showDistanceButton: showDistanceButton,
         showBombButton: showBombButton,
         showPointButton: showPointButton,
+        // 순위 메달 표시 설정 저장
+        rankingMedalCount: rankingMedalCount,
         updatedAt: new Date()
       }, { merge: true });
       
@@ -534,6 +557,21 @@ export default function AdminGameSettingsScreen() {
             </Text>
           </View>
           
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>차감 포인트 (기본값: 300)</Text>
+            <TextInput
+              style={styles.input}
+              value={deductionPoint}
+              onChangeText={setDeductionPoint}
+              placeholder="차감 포인트 값을 입력하세요"
+              keyboardType="numeric"
+            />
+            <Text style={styles.helpText}>
+              마이너스 레벨 물고기(-1~-3)에 적용되는 기본 차감 포인트 값입니다. 난이도에 따라 자동으로 조정됩니다.
+              -1은 차감 포인트가 가장 적고, -3은 차감 포인트가 가장 많습니다.
+            </Text>
+          </View>
+          
           <Text style={[styles.label, { marginTop: 20, marginBottom: 10 }]}>특별 버튼 표시 설정</Text>
           <Text style={styles.helpText}>
             각 특별 버튼의 표시 여부를 설정합니다. 활성화된 버튼만 게임에서 나타납니다.
@@ -587,6 +625,54 @@ export default function AdminGameSettingsScreen() {
                 onPress={() => setShowPointButton(!showPointButton)}
               >
                 <Text style={styles.toggleText}>{showPointButton ? '켜짐' : '꺼짐'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          
+          <Text style={[styles.label, { marginTop: 20, marginBottom: 10 }]}>순위 메달 표시 설정</Text>
+          <Text style={styles.helpText}>
+            랭킹 화면에서 표시할 메달의 개수를 설정합니다. (1-3위)
+          </Text>
+          
+          <View style={styles.inputGroup}>
+            <View style={styles.rankingMedalSelector}>
+              <TouchableOpacity 
+                style={[
+                  styles.medalButton, 
+                  rankingMedalCount === 1 && styles.medalButtonActive
+                ]} 
+                onPress={() => setRankingMedalCount(1)}
+              >
+                <Text style={[
+                  styles.medalButtonText,
+                  rankingMedalCount === 1 && styles.medalButtonTextActive
+                ]}>1위만</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[
+                  styles.medalButton, 
+                  rankingMedalCount === 2 && styles.medalButtonActive
+                ]} 
+                onPress={() => setRankingMedalCount(2)}
+              >
+                <Text style={[
+                  styles.medalButtonText,
+                  rankingMedalCount === 2 && styles.medalButtonTextActive
+                ]}>2위까지</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[
+                  styles.medalButton, 
+                  rankingMedalCount === 3 && styles.medalButtonActive
+                ]} 
+                onPress={() => setRankingMedalCount(3)}
+              >
+                <Text style={[
+                  styles.medalButtonText,
+                  rankingMedalCount === 3 && styles.medalButtonTextActive
+                ]}>3위까지</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -836,6 +922,36 @@ const styles = StyleSheet.create({
   toggleText: {
     color: '#fff',
     fontSize: 14,
+    fontFamily: 'GiantBold',
+  },
+  // 순위 메달 선택기 스타일
+  rankingMedalSelector: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginVertical: 10,
+  },
+  medalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    backgroundColor: '#f5f5f5',
+    alignItems: 'center',
+    marginHorizontal: 4,
+    borderRadius: 5,
+  },
+  medalButtonActive: {
+    backgroundColor: '#2196F3',
+    borderColor: '#1976D2',
+  },
+  medalButtonText: {
+    fontSize: 14,
+    color: '#666',
+    fontFamily: 'GiantRegular',
+  },
+  medalButtonTextActive: {
+    color: '#fff',
     fontFamily: 'GiantBold',
   },
 });

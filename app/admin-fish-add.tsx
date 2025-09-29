@@ -14,56 +14,46 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
 import { collection, doc, addDoc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase';
 
-// 레벨 선택 라디오 버튼 컴포넌트
+// 레벨 선택 드롭다운 컴포넌트
 const LevelBar = ({ level, onSelectLevel, showLevelText = true }: { level: number, onSelectLevel: (level: number) => void, showLevelText?: boolean }) => {
-  // 레벨은 1-5 사이의 값
-  const normalizedLevel = Math.max(1, Math.min(5, level));
+  // 레벨은 -3부터 -1 및 1부터 5까지의 값 (0 제외)
+  const normalizedLevel = level === 0 ? -1 : Math.max(-3, Math.min(5, level));
   
-  // 색상 배열 (노란색에서 빨간색으로)
-  const colors = ['#FFD700', '#FFA500', '#FF8C00', '#FF4500', '#FF0000'];
+  // 레벨 옵션 정의 (0 제외)
+  const levelOptions = [
+    { value: -3, label: '-3 (차감 포인트 많음)' },
+    { value: -2, label: '-2 (차감 포인트 중간)' },
+    { value: -1, label: '-1 (차감 포인트 적음)' },
+    { value: 1, label: '1 (매우 쉬움)' },
+    { value: 2, label: '2 (쉬움)' },
+    { value: 3, label: '3 (보통)' },
+    { value: 4, label: '4 (어려움)' },
+    { value: 5, label: '5 (매우 어려움)' }
+  ];
   
   return (
-    <View style={styles.levelRadioContainer}>
-      <View style={styles.radioButtonsRow}>
-        {[1, 2, 3, 4, 5].map((barLevel) => (
-          <TouchableOpacity 
-            key={barLevel}
-            onPress={() => onSelectLevel(barLevel)}
-            style={styles.radioButtonWrapper}
-          >
-            <View style={[
-              styles.radioButton,
-              barLevel === normalizedLevel && { borderColor: colors[barLevel-1] }
-            ]}>
-              {barLevel === normalizedLevel && (
-                <View style={[
-                  styles.radioButtonSelected,
-                  { backgroundColor: colors[barLevel-1] }
-                ]} />
-              )}
-            </View>
-            <Text style={[
-              styles.radioButtonLabel,
-              barLevel === normalizedLevel && { color: colors[barLevel-1], fontWeight: 'bold' }
-            ]}>
-              {barLevel}
-            </Text>
-          </TouchableOpacity>
-        ))}
+    <View style={styles.levelSelectContainer}>
+      <View style={styles.pickerContainer}>
+        <Picker
+          selectedValue={normalizedLevel}
+          onValueChange={(itemValue) => onSelectLevel(Number(itemValue))}
+          style={styles.picker}
+        >
+          {levelOptions.map((option) => (
+            <Picker.Item 
+              key={option.value.toString()} 
+              label={option.label} 
+              value={option.value} 
+            />
+          ))}
+        </Picker>
       </View>
-      {showLevelText && (
-        <Text style={styles.levelDescription}>
-          {normalizedLevel === 1 ? '매우 쉬움' : 
-           normalizedLevel === 2 ? '쉬움' : 
-           normalizedLevel === 3 ? '보통' : 
-           normalizedLevel === 4 ? '어려움' : '매우 어려움'}
-        </Text>
-      )}
     </View>
   );
 };
@@ -73,7 +63,7 @@ export default function AdminFishAddScreen() {
   
   // 폼 상태
   const [name, setName] = useState('');
-  const [level, setLevel] = useState('1');
+  const [level, setLevel] = useState('-1');
   const [image, setImage] = useState<string | null>(null);
   
   const router = useRouter();
@@ -127,8 +117,11 @@ export default function AdminFishAddScreen() {
       return;
     }
     
-    if (!level || isNaN(Number(level)) || Number(level) < 1 || Number(level) > 5) {
-      Alert.alert('오류', '유효한 레벨 값을 입력해주세요 (1-5).');
+    const levelNum = Number(level);
+    if (!level || isNaN(levelNum) || 
+        (levelNum > 0 && (levelNum < 1 || levelNum > 5)) || 
+        (levelNum < 0 && (levelNum < -3 || levelNum > -1))) {
+      Alert.alert('오류', '유효한 레벨 값을 입력해주세요 (-3~-1 또는 1-5).');
       return;
     }
     
@@ -252,46 +245,29 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 8,
   },
-  // 라디오 버튼 스타일
-  levelRadioContainer: {
+  // 드롭다운 선택 스타일
+  levelSelectContainer: {
     marginVertical: 10,
     alignItems: 'center',
-  },
-  radioButtonsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     width: '100%',
-    marginBottom: 10,
   },
-  radioButtonWrapper: {
-    alignItems: 'center',
-    marginHorizontal: 5,
+  pickerContainer: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#f9f9f9'
   },
-  radioButton: {
-    height: 24,
-    width: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#ccc',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 5,
-  },
-  radioButtonSelected: {
-    height: 12,
-    width: 12,
-    borderRadius: 6,
-  },
-  radioButtonLabel: {
-    fontSize: 16,
-    color: '#666',
-    fontFamily: 'GiantRegular',
+  picker: {
+    width: '100%'
   },
   levelDescription: {
     fontSize: 14,
     color: '#666',
     marginTop: 5,
     fontFamily: 'GiantRegular',
+    textAlign: 'center',
   },
   title: {
     fontSize: 24,
@@ -378,7 +354,8 @@ const styles = StyleSheet.create({
   previewImage: {
     width: '100%',
     height: '100%',
-    resizeMode: 'cover',
+    resizeMode: 'contain',
+    flex: 1,
   },
   formActions: {
     flexDirection: 'row',

@@ -30,6 +30,7 @@ const INITIAL_DISTANCE = 10;
 const REEL_TIME_LIMIT = 13000; // ms (ex. 13초, 필요시 하드코딩/DB값)
 const DEFAULT_COMMON_DISTANCE = 50; // 기본 공통 거리
 const DEFAULT_COMMON_POINT = 1000; // 기본 공통 포인트
+const DEFAULT_DEDUCTION_POINT = 500; // 기본 차감 포인트
 
 // 캐싱을 위한 상수
 const FISH_DATA_CACHE_KEY = 'FISH_DATA_CACHE';
@@ -52,7 +53,7 @@ interface Fish {
   name: string;
   point: number;
   img?: string;
-  level?: number; // 난이도 (1-5): 1(easy) ~ 5(hard)
+  level?: number; // 난이도 (-3 to 5, 0 제외): -3(매우 손해) ~ -1(약간 손해), 1(매우 쉬움) ~ 5(매우 어려움)
   distance?: number; // 개별 거리 (기존 호환성 유지)
   limitTime?: number; // 개별 제한 시간 (기존 호환성 유지)
   [key: string]: any; // 추가 속성을 위한 인덱스 시그니처
@@ -686,6 +687,7 @@ export default function FishingGame() {
   const [modalVisible, setModalVisible] = useState(false); // 모달 표시 여부
   const [commonDistance, setCommonDistance] = useState(DEFAULT_COMMON_DISTANCE); // 공통 거리 값
   const [commonPoint, setCommonPoint] = useState(DEFAULT_COMMON_POINT); // 공통 포인트 값
+  const [deductionPoint, setDeductionPoint] = useState(DEFAULT_DEDUCTION_POINT); // 차감 포인트 값
 
   const [state, setState] = useState<GameState>('idle'); // 게임 상태
   const [baitCount, setBaitCount] = useState<number>(0); // 남은 미끼 개수
@@ -1013,6 +1015,9 @@ export default function FishingGame() {
         if (data.point) {
           setCommonPoint(data.point);
         }
+        if (data.deductionPoint) {
+          setDeductionPoint(data.deductionPoint);
+        }
         
         // 특별 버튼 표시 설정 불러오기 - 게임 시작 시에는 버튼을 표시하지 않도록 수정
         if (data.showBaitButton !== undefined) {
@@ -1037,13 +1042,14 @@ export default function FishingGame() {
           setFirebasePointButton(data.showPointButton);
         }
         
-        console.log('Game settings loaded - distance:', data.distance, 'point:', data.point);
+        console.log('Game settings loaded - distance:', data.distance, 'point:', data.point, 'deductionPoint:', data.deductionPoint);
         console.log('Button settings loaded - bait:', data.showBaitButton, 'catch:', data.showCatchButton, 
                     'distance:', data.showDistanceButton, 'bomb:', data.showBombButton, 'point:', data.showPointButton);
       } else {
         console.log('No game settings document exists, using defaults');
         setCommonDistance(DEFAULT_COMMON_DISTANCE);
         setCommonPoint(DEFAULT_COMMON_POINT);
+        setDeductionPoint(DEFAULT_DEDUCTION_POINT);
         // 기본적으로 버튼은 모두 비활성화
         setShowBaitButton(false);
         setShowCatchButton(false);
@@ -1061,6 +1067,7 @@ export default function FishingGame() {
       // 오류 발생 시 기본값 사용
       setCommonDistance(DEFAULT_COMMON_DISTANCE);
       setCommonPoint(DEFAULT_COMMON_POINT);
+      setDeductionPoint(DEFAULT_DEDUCTION_POINT);
       // 기본적으로 버튼은 모두 비활성화
       setShowBaitButton(false);
       setShowCatchButton(false);
@@ -1092,37 +1099,70 @@ export default function FishingGame() {
 
   // 물고기 레벨에 따른 파라미터 계산 함수
   const calculateFishParameters = (fishLevel: number = 1) => {
-    // 레벨 범위 확인 (1-5)
-    const level = Math.max(1, Math.min(5, fishLevel));
+    // 레벨 범위 확인 (-3 to 5, 0 제외)
+    // 0이 들어오면 1로 변환
+    let level = fishLevel === 0 ? 1 : fishLevel;
+    // 범위 제한 (-3 ~ -1, 1 ~ 5)
+    level = Math.max(-3, Math.min(5, level));
+    
+    // 양수 레벨 (1-5): 정상 물고기, 난이도에 따라 거리와 포인트 계산
+    // 음수 레벨 (-3 to -1): 차감 물고기, 난이도에 따라 차감 포인트 계산
+    if (level > 0) {
+      // 거리 계산: 레벨이 높을수록 거리가 길어짐 (더 어려움)
+      // 레벨 1: 거리는 commonDistance의 0-20% 사이에서 랜덤
+      // 레벨 2: 거리는 commonDistance의 20-40% 사이에서 랜덤
+      // 레벨 3: 거리는 commonDistance의 40-60% 사이에서 랜덤
+      // 레벨 4: 거리는 commonDistance의 60-80% 사이에서 랜덤
+      // 레벨 5: 거리는 commonDistance의 80-100% 사이에서 랜덤
+      const minDistancePercent = (level - 1) * 0.2; // 0.0, 0.2, 0.4, 0.6, 0.8
+      const maxDistancePercent = level * 0.2; // 0.2, 0.4, 0.6, 0.8, 1.0
+      const distancePercent = minDistancePercent + (Math.random() * (maxDistancePercent - minDistancePercent));
+      const distance = Math.round(commonDistance * distancePercent);
 
-    // 거리 계산: 레벨이 높을수록 거리가 길어짐 (더 어려움)
-    // 레벨 1: 거리는 commonDistance의 0-20% 사이에서 랜덤
-    // 레벨 2: 거리는 commonDistance의 20-40% 사이에서 랜덤
-    // 레벨 3: 거리는 commonDistance의 40-60% 사이에서 랜덤
-    // 레벨 4: 거리는 commonDistance의 60-80% 사이에서 랜덤
-    // 레벨 5: 거리는 commonDistance의 80-100% 사이에서 랜덤
-    const minDistancePercent = (level - 1) * 0.2; // 0.0, 0.2, 0.4, 0.6, 0.8
-    const maxDistancePercent = level * 0.2; // 0.2, 0.4, 0.6, 0.8, 1.0
-    const distancePercent = minDistancePercent + (Math.random() * (maxDistancePercent - minDistancePercent));
-    const distance = Math.round(commonDistance * distancePercent);
+      // 시간 계산: 거리의 80% 수준으로 결정
+      const limitTime = Math.round(distance * 0.8) * 1000; // 초 단위로 변환 (ms)
 
-    // 시간 계산: 거리의 80% 수준으로 결정
-    const limitTime = Math.round(distance * 0.8) * 1000; // 초 단위로 변환 (ms)
-
-    // 포인트 계산: 레벨이 높을수록 포인트가 높아짐
-    // 레벨 5: 포인트는 commonPoint의 80-100% 사이에서 랜덤
-    // 레벨 1: 포인트는 commonPoint의 40-60% 사이에서 랜덤
-    const minPointPercent = (level - 1) * 0.2; // 0.0, 0.2, 0.4, 0.6, 0.8
-    const maxPointPercent = level * 0.2; // 0.2, 0.4, 0.6, 0.8, 1.0
-    const pointPercent = minPointPercent + (Math.random() * (maxPointPercent - minPointPercent));
-    // 포인트를 10단위로 반올림 (5 이상은 올림, 5 미만은 내림)
-    const rawPoint = Math.round(commonPoint * pointPercent);
-    const lastDigit = rawPoint % 10;
-    let point = lastDigit >= 5 ? rawPoint + (10 - lastDigit) : rawPoint - lastDigit;
-    // 최소 1포인트 보장
-    point = Math.max(1, point);
-
-    return { distance, limitTime, point };
+      // 포인트 계산: 레벨이 높을수록 포인트가 높아짐
+      // 레벨 5: 포인트는 commonPoint의 80-100% 사이에서 랜덤
+      // 레벨 1: 포인트는 commonPoint의 0-20% 사이에서 랜덤
+      const minPointPercent = (level - 1) * 0.2; // 0.0, 0.2, 0.4, 0.6, 0.8
+      const maxPointPercent = level * 0.2; // 0.2, 0.4, 0.6, 0.8, 1.0
+      const pointPercent = minPointPercent + (Math.random() * (maxPointPercent - minPointPercent));
+      // 포인트를 10단위로 반올림 (5 이상은 올림, 5 미만은 내림)
+      const rawPoint = Math.round(commonPoint * pointPercent);
+      const lastDigit = rawPoint % 10;
+      let point = lastDigit >= 5 ? rawPoint + (10 - lastDigit) : rawPoint - lastDigit;
+      // 최소 1포인트 보장
+      point = Math.max(1, point);
+      
+      return { distance, limitTime, point };
+    } else {
+      // 음수 레벨 (-3 to -1): 차감 물고기
+      // 거리와 시간은 레벨 1과 동일하게 설정 (쉬움)
+      const distance = Math.round(commonDistance * 0.1); // 레벨 1의 중간값 사용
+      const limitTime = Math.round(distance * 0.8) * 1000;
+      
+      // 차감 포인트 계산: 레벨이 낮을수록 차감 포인트가 커짐
+      // 레벨 -1: 차감 포인트는 deductionPoint의 20-40% 사이에서 랜덤
+      // 레벨 -2: 차감 포인트는 deductionPoint의 40-60% 사이에서 랜덤
+      // 레벨 -3: 차감 포인트는 deductionPoint의 60-80% 사이에서 랜덤
+      const absLevel = Math.abs(level);
+      const minDeductPercent = (absLevel - 1) * 0.2; // 0.0, 0.2, 0.4
+      const maxDeductPercent = absLevel * 0.2; // 0.2, 0.4, 0.6
+      const deductPercent = minDeductPercent + (Math.random() * (maxDeductPercent - minDeductPercent));
+      
+      // 차감 포인트를 10단위로 반올림
+      const rawPoint = -Math.round(deductionPoint * deductPercent); // 음수로 설정
+      const lastDigit = Math.abs(rawPoint) % 10;
+      let point = lastDigit >= 5 ? 
+        rawPoint - (10 - lastDigit) : // 음수이므로 빼기
+        rawPoint + lastDigit;         // 음수이므로 더하기
+      
+      // 최소 -1포인트 보장 (너무 작은 차감은 의미 없음)
+      point = Math.min(-1, point);
+      
+      return { distance, limitTime, point };
+    }
   };
 
   // 캐시 버전 확인
@@ -1467,6 +1507,7 @@ export default function FishingGame() {
         const userSnap = await transaction.get(userRef);
         let current = (userSnap.data()?.totalPoint ?? 0) as number;
         let next = current + totalPoints;
+        // 음수 레벨 물고기로 인한 포인트 차감 시에도 최소 0 보장
         if (next < 0) next = 0;
         transaction.update(userRef, { totalPoint: next });
         userName = userSnap.data()?.name || '사용자';
@@ -1541,6 +1582,21 @@ export default function FishingGame() {
     
     if (!uuid) {
       Alert.alert('오류', '회원 정보가 없습니다.');
+      setIsStartButtonDisabled(false); // 오류 발생 시 버튼 다시 활성화
+      return;
+    }
+    
+    // users/{userId}/boarding/info 문서가 존재하는지 확인
+    try {
+      const boardingInfoDoc = await getDoc(doc(db, `users/${uuid}/boarding/info`));
+      if (!boardingInfoDoc.exists()) {
+        Alert.alert('알림', '원활한 서비스 제공을 위해 승선 정보 입력이 필요합니다.');
+        setIsStartButtonDisabled(false); // 오류 발생 시 버튼 다시 활성화
+        return;
+      }
+    } catch (error) {
+      console.error('사용자 정보 확인 오류:', error);
+      Alert.alert('오류', '승선 정보를 확인하는 중 오류가 발생했습니다.');
       setIsStartButtonDisabled(false); // 오류 발생 시 버튼 다시 활성화
       return;
     }
@@ -1675,7 +1731,8 @@ export default function FishingGame() {
     setFish(randomFish);
 
     // 물고기 레벨에 따라 거리, 시간, 포인트 계산
-    const fishLevel = randomFish.level || 1; // 레벨이 없으면 기본값 1
+    // 레벨이 없거나 0인 경우 기본값 1 (양수 레벨로 설정)
+    const fishLevel = randomFish.level === 0 ? 1 : (randomFish.level || 1);
     const { distance, limitTime, point } = calculateFishParameters(fishLevel);
 
     // 계산된 값으로 설정
@@ -2857,13 +2914,14 @@ export default function FishingGame() {
                                       ]}
                                       resizeMode="contain"
                                     />
+                                    {/* 레벨에 따른 배지 표시 */}
                                     {fish.level === 5 && (
                                       <View style={{
                                         position: 'absolute',
                                         top: 5,
                                         right: 5,
                                         padding: 2,
-                                        backgroundColor: '#FFD700',
+                                        backgroundColor: '#FFD700', // 골드 배경
                                         borderRadius: 8,
                                         justifyContent: 'center',
                                         alignItems: 'center',
@@ -2882,15 +2940,48 @@ export default function FishingGame() {
                                         }}>레어</Text>
                                       </View>
                                     )}
+                                    {fish.level === -3 && (
+                                      <View style={{
+                                        position: 'absolute',
+                                        top: 5,
+                                        right: 5,
+                                        padding: 2,
+                                        backgroundColor: '#0000FF', // 파란색 배경
+                                        borderRadius: 8,
+                                        justifyContent: 'center',
+                                        alignItems: 'center',
+                                        borderWidth: 1,
+                                        borderColor: '#FFF',
+                                        elevation: 5,
+                                        shadowColor: '#000',
+                                        shadowOffset: { width: 0, height: 2 },
+                                        shadowOpacity: 0.3,
+                                        shadowRadius: 3,
+                                      }}>
+                                        <Text style={{
+                                          fontSize: 16,
+                                          fontFamily: 'GiantRegular',
+                                          color: '#FFFFFF',
+                                        }}>손해</Text>
+                                      </View>
+                                    )}
                                   </View>
                                 </TouchableOpacity>
                                 <Text style={styles.resultMessage}>
-                                  {fish.name}을(를) 잡았다!{'\n'}
-                                  <Text style={{ color: '#ffff00' }}>
-                                    {extraPoint > 0 
-                                      ? `${fish.point}P + ${extraPoint}P = ${fish.point + extraPoint}P` 
-                                      : `${fish.point}P`}
-                                  </Text> 획득!
+                                  {fish.name}을(를) {fish.point >= 0 ? '잡았다!' : '획득했다!'}{'\n'}
+                                  {fish.point >= 0 ? (
+                                    <Text style={{ color: '#ffff00' }}>
+                                      {extraPoint > 0 
+                                        ? `${fish.point}P + ${extraPoint}P = ${fish.point + extraPoint}P` 
+                                        : `${fish.point}P`}
+                                      <Text style={{ color: 'white' }}> 획득!</Text>
+                                    </Text>
+                                  ) : (
+                                    <Text style={{ color: '#FF6B6B' }}>
+                                      {`${Math.abs(fish.point)}P`}
+                                      <Text style={{ color: 'white' }}> 차감!</Text>
+                                    </Text>
+                                  )}
                                 </Text>
                               </View>
                             ) : (

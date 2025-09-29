@@ -60,21 +60,33 @@ const getCachedImage = async (uri: string, fishId: string): Promise<string> => {
 
 // 레벨 바 컴포넌트
 const LevelBar = ({ level }: { level: number }) => {
-  // 레벨은 1-5 사이의 값
-  const normalizedLevel = Math.max(1, Math.min(5, level));
+  // 레벨은 -3부터 -1 및 1부터 5까지의 값 (0 제외)
+  const normalizedLevel = level === 0 ? -1 : Math.max(-3, Math.min(5, level));
   
-  // 색상 배열 (노란색에서 빨간색으로)
-  const colors = ['#FFD700', '#FFA500', '#FF8C00', '#FF4500', '#FF0000'];
+  // 색상 배열 (파란색에서 노란색, 그리고 빨간색으로)
+  const colors = [
+    '#0000FF', // 파란색 (레벨 -3)
+    '#4169E1', // 로얄 블루 (레벨 -2)
+    '#1E90FF', // 도지 블루 (레벨 -1)
+    '#FFD700', // 골드 (레벨 1)
+    '#FFA500', // 오렌지 (레벨 2)
+    '#FF8C00', // 다크 오렌지 (레벨 3)
+    '#FF4500', // 오렌지 레드 (레벨 4)
+    '#FF0000'  // 빨간색 (레벨 5)
+  ];
+  
+  // 레벨 -3부터 -1 및 1부터 5까지의 배열 생성 (0 제외)
+  const levelRange = [...Array.from({ length: 3 }, (_, i) => i - 3), ...Array.from({ length: 5 }, (_, i) => i + 1)];
   
   return (
     <View style={styles.levelBarContainer}>
-      {[1, 2, 3, 4, 5].map((barLevel) => (
+      {levelRange.map((barLevel) => (
         <View 
           key={barLevel}
           style={[
             styles.levelBarSegment,
             barLevel <= normalizedLevel ? 
-              { backgroundColor: colors[barLevel-1] } : 
+              { backgroundColor: colors[barLevel < 0 ? barLevel + 3 : barLevel + 2] } : 
               styles.levelBarInactive
           ]}
         />
@@ -134,7 +146,7 @@ export default function AdminFishScreen() {
         return {
           id: doc.id,
           ...data,
-          level: Number(data.level) || 1,
+          level: data.level !== undefined ? Number(data.level) : -1,
         } as Fish;
       });
       // 가나다순으로 정렬

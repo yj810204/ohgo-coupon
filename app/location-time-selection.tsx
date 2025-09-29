@@ -275,7 +275,29 @@ export default function LocationTimeSelectionScreen() {
             <Text style={[a4Styles.cell, a4Styles.headerCell, {width: '14%'}]}>비상연락처</Text>
             <Text style={[a4Styles.cell, a4Styles.headerCell, {width: '6%', borderRightWidth: 0}]}>비고</Text>
           </View>
-          {rosterItems.map((item, index) => (
+          {(() => {
+            // Filter out captains and crew first
+            const captainsAndCrew = rosterItems.filter(item => item.role === 'captain' || item.role === 'sailor');
+            const otherPassengers = rosterItems.filter(item => item.role !== 'captain' && item.role !== 'sailor');
+            
+            // Render captains and crew first (without numbers)
+            const captainCrewRows = captainsAndCrew.map((item) => (
+              <View key={item.id} style={a4Styles.tableRow}>
+                <Text style={[a4Styles.cell, {width: '4%', fontSize: cellFontSize}]}>-</Text>
+                <Text style={[a4Styles.cell, {width: '10%', fontSize: cellFontSize}]}>{item.name}</Text>
+                <Text style={[a4Styles.cell, {width: '14%', fontSize: cellFontSize}]}>{item.birth}</Text>
+                <Text style={[a4Styles.cell, {width: '6%', fontSize: cellFontSize}]}>{item.gender}</Text>
+                <Text style={[a4Styles.cell, a4Styles.addressCell, {width: '32%', fontSize: cellFontSize}]}>{item.address}</Text>
+                <Text style={[a4Styles.cell, {width: '14%', fontSize: cellFontSize}]}>{item.phone}</Text>
+                <Text style={[a4Styles.cell, {width: '14%', fontSize: cellFontSize}]}>{item.emergency}</Text>
+                <Text style={[a4Styles.cell, {width: '6%', borderRightWidth: 0, fontSize: cellFontSize}]}>
+                  {item.role === 'captain' ? '선장' : item.role === 'sailor' ? '선원' : ''}
+                </Text>
+              </View>
+            ));
+            
+            // Then render other passengers (with sequential numbers)
+            const passengerRows = otherPassengers.map((item, index) => (
               <View key={item.id} style={a4Styles.tableRow}>
                 <Text style={[a4Styles.cell, {width: '4%', fontSize: cellFontSize}]}>{index + 1}</Text>
                 <Text style={[a4Styles.cell, {width: '10%', fontSize: cellFontSize}]}>{item.name}</Text>
@@ -288,7 +310,11 @@ export default function LocationTimeSelectionScreen() {
                   {item.role === 'captain' ? '선장' : item.role === 'sailor' ? '선원' : ''}
                 </Text>
               </View>
-          ))}
+            ));
+            
+            // Return all rows combined
+            return [...captainCrewRows, ...passengerRows];
+          })()}
           {Array.from({ length: Math.max(0, 15 - rosterItems.length) }).map((_, index) => (
               <View key={`empty-${index}`} style={a4Styles.tableRow}>
                 <Text style={[a4Styles.cell, {width: '4%', fontSize: cellFontSize}]}></Text>

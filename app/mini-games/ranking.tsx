@@ -18,20 +18,21 @@ import * as FileSystem from 'expo-file-system';
 import * as SecureStore from 'expo-secure-store';
 
 // 메달 이미지 컴포넌트
-const MedalIcon = ({ rank }: { rank: number }) => {
+const MedalIcon = ({ rank, medalCount }: { rank: number; medalCount: number }) => {
+  // 메달 표시 여부 확인 (설정된 메달 개수에 따라)
   if (rank === 1) {
     return (
       <View style={[styles.medalContainer, { backgroundColor: '#FFD700' }]}>
         <Text style={styles.medalText}>🥇</Text>
       </View>
     );
-  } else if (rank === 2) {
+  } else if (rank === 2 && medalCount >= 2) {
     return (
       <View style={[styles.medalContainer, { backgroundColor: '#C0C0C0' }]}>
         <Text style={styles.medalText}>🥈</Text>
       </View>
     );
-  } else if (rank === 3) {
+  } else if (rank === 3 && medalCount >= 3) {
     return (
       <View style={[styles.medalContainer, { backgroundColor: '#CD7F32' }]}>
         <Text style={styles.medalText}>🥉</Text>
@@ -146,6 +147,7 @@ export default function RankingScreen() {
   const [tournament, setTournament] = useState<Tournament>(null);
   const [totalMembers, setTotalMembers] = useState<number>(0);
   const [isAdmin, setIsAdmin] = useState(false); // 관리자 상태
+  const [rankingMedalCount, setRankingMedalCount] = useState<number>(3); // 순위 메달 표시 개수 (기본값 3)
   
   // 물고기 잡은 기록 모달 관련 상태
   const [modalVisible, setModalVisible] = useState(false);
@@ -154,10 +156,32 @@ export default function RankingScreen() {
   const [groupedFishCatches, setGroupedFishCatches] = useState<GroupedFishCatch[]>([]);
   const [loadingFishCatches, setLoadingFishCatches] = useState(false);
   const [cachedImages, setCachedImages] = useState<{[key: string]: string}>({}); // 캐시된 이미지 상태
+  
+  // 대회 정보 모달 관련 상태
+  const [tournamentModalVisible, setTournamentModalVisible] = useState(false);
 
   useEffect(() => {
     fetchRankingData();
+    fetchRankingMedalCount();
   }, []);
+  
+  // 순위 메달 표시 개수 설정 가져오기
+  const fetchRankingMedalCount = async () => {
+    try {
+      const gameSettingsDoc = await getDoc(doc(db, 'gameSettings', 'fishing'));
+      
+      if (gameSettingsDoc.exists()) {
+        const data = gameSettingsDoc.data();
+        if (data.rankingMedalCount !== undefined) {
+          setRankingMedalCount(data.rankingMedalCount);
+          console.log('Ranking medal count loaded:', data.rankingMedalCount);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching ranking medal count:', error);
+      // 오류 발생 시 기본값 3 유지
+    }
+  };
   
   // Check if user is admin
   useEffect(() => {
@@ -311,6 +335,9 @@ export default function RankingScreen() {
       // Fetch ranking data using the common function
       await fetchRankingDataCommon();
       
+      // Fetch ranking medal count
+      await fetchRankingMedalCount();
+      
       // The auto-scroll will be triggered by the useEffect when myRank is updated
       console.log('Refresh completed, auto-scroll will be triggered if myRank is set');
     } catch (error) {
@@ -326,15 +353,11 @@ export default function RankingScreen() {
   
   // 사용자의 물고기 잡은 기록 가져오기
   const fetchUserFishCatches = async (userId: string) => {
-    if (!tournament) return;
-    
     setLoadingFishCatches(true);
     try {
-      // 대회 기간 내의 물고기 잡은 기록만 가져오기
+      // 모든 물고기 잡은 기록 가져오기 (날짜 필터링 제거)
       const q = query(
         collection(db, `users/${userId}/points`),
-        where('at', '>=', tournament.startDate),
-        where('at', '<=', tournament.endDate),
         orderBy('at', 'desc')
       );
       
@@ -437,10 +460,9 @@ export default function RankingScreen() {
           isCurrentUser && styles.currentUserItem
         ]}
         onPress={() => handleUserSelect(item)}
-        disabled={!tournament} // 대회 기간이 아니면 클릭 불가
       >
         
-        <MedalIcon rank={index + 1} />
+        <MedalIcon rank={index + 1} medalCount={rankingMedalCount} />
         
         <View style={styles.userInfo}>
           <Text style={[
@@ -500,16 +522,15 @@ export default function RankingScreen() {
       ) : (
         <>
           {tournament ? (
-            <View style={styles.tournamentBanner}>
+            <TouchableOpacity 
+              style={styles.tournamentBanner}
+              onPress={() => setTournamentModalVisible(true)}
+            >
               <View style={styles.tournamentTitleContainer}>
                 <Ionicons name="trophy" size={20} color="#FFD700" style={styles.trophyIcon} />
                 <Text style={styles.tournamentTitle}>{tournament.title}</Text>
               </View>
-              {tournament.description ? (
-                <Text style={styles.tournamentDescription}>{tournament.description}</Text>
-              ) : null}
-              <Text style={styles.tournamentPeriod}>{formatTournamentPeriod()}</Text>
-            </View>
+            </TouchableOpacity>
           ) : (
             <View style={[styles.tournamentBanner, { backgroundColor: '#757575' }]}>
               <Text style={styles.tournamentTitle}>현재 진행 중인 대회가 없습니다</Text>
@@ -629,7 +650,7 @@ export default function RankingScreen() {
                               ) : (
                                 <Ionicons name="fish" size={18} color="#2196F3" style={styles.fishItemIcon} />
                               )}
-                              <Text style={styles.fishName}>{item.fishName} ({item.count}마리)</Text>
+                              <Text style={styles.fishName}>{item.fishName} ({item.count}{item.totalPoints >= 0 ? '마리' : '개'})</Text>
                             </View>
                           </View>
                           <View style={styles.fishDetails}>
@@ -647,6 +668,35 @@ export default function RankingScreen() {
                     <Text style={styles.emptyText}>기록이 없습니다.</Text>
                   </View>
                 )}
+              </View>
+            </View>
+          </Modal>
+          
+          {/* 대회 정보 모달 */}
+          <Modal
+            animationType="slide"
+            transparent={true}
+            visible={tournamentModalVisible}
+            onRequestClose={() => setTournamentModalVisible(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>
+                    {tournament?.title}
+                  </Text>
+                  <TouchableOpacity onPress={() => setTournamentModalVisible(false)}>
+                    <Ionicons name="close" size={24} color="#333" />
+                  </TouchableOpacity>
+                </View>
+                
+                <View style={styles.tournamentModalContent}>
+                  <Text style={styles.tournamentModalPeriod}>{formatTournamentPeriod()}</Text>
+
+                  {tournament?.description ? (
+                    <Text style={styles.tournamentModalDescription}>{tournament.description}</Text>
+                  ) : null}
+                </View>
               </View>
             </View>
           </Modal>
@@ -671,15 +721,14 @@ const styles = StyleSheet.create({
   tournamentTitleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
-  },
-  trophyIcon: {
-    marginRight: 6,
   },
   tournamentTitle: {
     fontSize: 18,
     color: '#fff',
     fontFamily: 'GiantRegular',
+  },
+  trophyIcon: {
+    marginRight: 8,
   },
   tournamentDescription: {
     fontSize: 14,
@@ -690,6 +739,22 @@ const styles = StyleSheet.create({
   tournamentPeriod: {
     fontSize: 14,
     color: '#E3F2FD',
+    fontFamily: 'GiantRegular',
+  },
+  // 대회 정보 모달 스타일
+  tournamentModalContent: {
+    padding: 15,
+  },
+  tournamentModalPeriod: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 15,
+    fontFamily: 'GiantRegular',
+  },
+  tournamentModalDescription: {
+    fontSize: 16,
+    color: '#333',
+    lineHeight: 24,
     fontFamily: 'GiantRegular',
   },
   header: {
