@@ -14,7 +14,7 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import { doc, getDoc, setDoc, collection, getDocs, updateDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, getDocs, updateDoc, deleteDoc, deleteField } from 'firebase/firestore';
 import { db } from '../firebase';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import Modal from 'react-native-modal';
@@ -34,6 +34,12 @@ export default function AdminGameSettingsScreen() {
   const [commonPoint, setCommonPoint] = useState('1000'); // 기본값 1000
   const [deductionPoint, setDeductionPoint] = useState('300'); // 기본값 300 (차감 포인트)
   const [savingGameSettings, setSavingGameSettings] = useState(false);
+  const [fishingGameEnabled, setFishingGameEnabled] = useState(true);
+  const [blockGameEnabled, setBlockGameEnabled] = useState(true);
+  const [savingMiniGameSettings, setSavingMiniGameSettings] = useState(false);
+  const [fishingBackgroundUrl, setFishingBackgroundUrl] = useState('');
+  const [blockBackgroundUrl, setBlockBackgroundUrl] = useState('');
+  const [savingBackgroundSettings, setSavingBackgroundSettings] = useState(false);
 
   // 특별 버튼 표시 설정
   const [showBaitButton, setShowBaitButton] = useState(false);
@@ -59,6 +65,8 @@ export default function AdminGameSettingsScreen() {
     fetchTournamentData();
     fetchDailyBaitLimit();
     fetchGameSettings();
+    fetchMiniGameSettings();
+    fetchBackgroundSettings();
   }, []);
 
   const fetchTournamentData = async () => {
@@ -144,6 +152,42 @@ export default function AdminGameSettingsScreen() {
     } catch (error) {
       console.error('Error fetching game settings:', error);
       Alert.alert('오류', '게임 설정 정보를 불러오는 중 오류가 발생했습니다.');
+    }
+  };
+
+  const fetchMiniGameSettings = async () => {
+    try {
+      const miniGamesDoc = await getDoc(doc(db, 'gameSettings', 'miniGames'));
+
+      if (miniGamesDoc.exists()) {
+        const data = miniGamesDoc.data();
+        setFishingGameEnabled(data.fishingEnabled !== false);
+        setBlockGameEnabled(data.blockEnabled !== false);
+      } else {
+        setFishingGameEnabled(true);
+        setBlockGameEnabled(true);
+      }
+    } catch (error) {
+      console.error('Error fetching mini game settings:', error);
+      Alert.alert('오류', '미니 게임 표시 설정을 불러오는 중 오류가 발생했습니다.');
+    }
+  };
+
+  const fetchBackgroundSettings = async () => {
+    try {
+      const backgroundDoc = await getDoc(doc(db, 'gameSettings', 'backgrounds'));
+
+      if (backgroundDoc.exists()) {
+        const data = backgroundDoc.data();
+        setFishingBackgroundUrl(data.fishing?.url || '');
+        setBlockBackgroundUrl(data.block?.url || '');
+      } else {
+        setFishingBackgroundUrl('');
+        setBlockBackgroundUrl('');
+      }
+    } catch (error) {
+      console.error('Error fetching background settings:', error);
+      Alert.alert('오류', '배경 이미지 설정을 불러오는 중 오류가 발생했습니다.');
     }
   };
 
@@ -296,6 +340,65 @@ export default function AdminGameSettingsScreen() {
       Alert.alert('오류', '게임 설정 저장 중 오류가 발생했습니다.');
     } finally {
       setSavingGameSettings(false);
+    }
+  };
+
+  const saveMiniGameSettings = async () => {
+    try {
+      setSavingMiniGameSettings(true);
+
+      await setDoc(doc(db, 'gameSettings', 'miniGames'), {
+        fishingEnabled: fishingGameEnabled,
+        blockEnabled: blockGameEnabled,
+        updatedAt: new Date()
+      }, { merge: true });
+
+      Alert.alert('성공', '미니 게임 표시 설정이 저장되었습니다.');
+    } catch (error) {
+      console.error('Error saving mini game settings:', error);
+      Alert.alert('오류', '미니 게임 표시 설정 저장 중 오류가 발생했습니다.');
+    } finally {
+      setSavingMiniGameSettings(false);
+    }
+  };
+
+  const saveBackgroundSettings = async () => {
+    try {
+      setSavingBackgroundSettings(true);
+
+      const payload: Record<string, any> = {};
+      const fishingTrimmed = fishingBackgroundUrl.trim();
+      const blockTrimmed = blockBackgroundUrl.trim();
+
+      if (fishingTrimmed) {
+        payload.fishing = {
+          url: fishingTrimmed,
+          updatedAt: new Date()
+        };
+      } else {
+        payload.fishing = deleteField();
+      }
+
+      if (blockTrimmed) {
+        payload.block = {
+          url: blockTrimmed,
+          updatedAt: new Date()
+        };
+      } else {
+        payload.block = deleteField();
+      }
+
+      await setDoc(doc(db, 'gameSettings', 'backgrounds'), payload, { merge: true });
+
+      setFishingBackgroundUrl(fishingTrimmed);
+      setBlockBackgroundUrl(blockTrimmed);
+
+      Alert.alert('성공', '배경 이미지 설정이 저장되었습니다.');
+    } catch (error) {
+      console.error('Error saving background settings:', error);
+      Alert.alert('오류', '배경 이미지 설정 저장 중 오류가 발생했습니다.');
+    } finally {
+      setSavingBackgroundSettings(false);
     }
   };
 
@@ -683,6 +786,93 @@ export default function AdminGameSettingsScreen() {
             disabled={savingGameSettings}
           >
             {savingGameSettings ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.saveButtonText}>저장</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>미니 게임 표시 설정</Text>
+          <Text style={styles.helpText}>
+            각 미니 게임의 메뉴 표시 여부를 설정합니다. 비활성화된 게임은 사용자 메뉴에서 숨겨집니다.
+          </Text>
+
+          <View style={styles.toggleContainer}>
+            <View style={styles.toggleItem}>
+              <Text style={styles.toggleLabel}>낚시 게임 표시</Text>
+              <TouchableOpacity
+                style={[styles.toggleButton, fishingGameEnabled ? styles.toggleActive : styles.toggleInactive]}
+                onPress={() => setFishingGameEnabled(!fishingGameEnabled)}
+              >
+                <Text style={styles.toggleText}>{fishingGameEnabled ? '켜짐' : '꺼짐'}</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.toggleItem}>
+              <Text style={styles.toggleLabel}>블록 게임 표시</Text>
+              <TouchableOpacity
+                style={[styles.toggleButton, blockGameEnabled ? styles.toggleActive : styles.toggleInactive]}
+                onPress={() => setBlockGameEnabled(!blockGameEnabled)}
+              >
+                <Text style={styles.toggleText}>{blockGameEnabled ? '켜짐' : '꺼짐'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.saveButton, savingMiniGameSettings && styles.disabledButton]}
+            onPress={saveMiniGameSettings}
+            disabled={savingMiniGameSettings}
+          >
+            {savingMiniGameSettings ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.saveButtonText}>저장</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>미니 게임 배경 이미지</Text>
+          <Text style={styles.helpText}>
+            웹에 업로드된 이미지를 배경으로 사용할 수 있습니다. 저장하면 사용자 기기에 자동으로 내려받아 적용됩니다.
+          </Text>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>낚시 게임 배경 이미지 URL</Text>
+            <TextInput
+              style={styles.input}
+              value={fishingBackgroundUrl}
+              onChangeText={setFishingBackgroundUrl}
+              placeholder="https://example.com/fishing-background.jpg"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <Text style={styles.helpText}>
+              비워두면 기본 배경을 사용합니다. 이미지를 변경하면 다시 저장하여 최신 버전을 적용할 수 있습니다.
+            </Text>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>블록 게임 배경 이미지 URL</Text>
+            <TextInput
+              style={styles.input}
+              value={blockBackgroundUrl}
+              onChangeText={setBlockBackgroundUrl}
+              placeholder="https://example.com/block-background.jpg"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </View>
+
+          <TouchableOpacity
+            style={[styles.saveButton, savingBackgroundSettings && styles.disabledButton]}
+            onPress={saveBackgroundSettings}
+            disabled={savingBackgroundSettings}
+          >
+            {savingBackgroundSettings ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
               <Text style={styles.saveButtonText}>저장</Text>

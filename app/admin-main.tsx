@@ -44,16 +44,9 @@ export default function AdminMainScreen() {
     });
   };
   
-  const navigateToGameRanking = () => {
-    router.push({
-      pathname: '/mini-games/ranking',
-      params: params,
-    });
-  };
-  
   const navigateToMiniGame = () => {
     router.push({
-      pathname: '/mini-games/fishing',
+      pathname: '/mini-games',
       params: params,
     });
   };
@@ -91,11 +84,11 @@ export default function AdminMainScreen() {
             <Text style={styles.menuText}>회원 관리</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.menuItem} onPress={navigateToSettings}>
+          <TouchableOpacity style={styles.menuItem} onPress={navigateToTodayRoster}>
             <View style={styles.iconContainer}>
-              <Ionicons name="settings" size={40} color="#34C759" />
+              <Ionicons name="calendar" size={40} color="#FF5722" />
             </View>
-            <Text style={styles.menuText}>설정</Text>
+            <Text style={styles.menuText}>승선 명부</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.menuItem} onPress={navigateToPushNotification}>
@@ -105,11 +98,25 @@ export default function AdminMainScreen() {
             <Text style={styles.menuText}>전체 알림</Text>
           </TouchableOpacity>
 
+          <TouchableOpacity style={styles.menuItem} onPress={navigateToMiniGame}>
+            <View style={styles.iconContainer}>
+              <Ionicons name="game-controller" size={40} color="#FF3B30" />
+            </View>
+            <Text style={styles.menuText}>미니 게임</Text>
+          </TouchableOpacity>
+
           <TouchableOpacity style={styles.menuItem} onPress={navigateToFishManagement}>
             <View style={styles.iconContainer}>
               <Ionicons name="fish" size={40} color="#9C27B0" />
             </View>
             <Text style={styles.menuText}>물고기 도감</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.menuItem} onPress={navigateToSettings}>
+            <View style={styles.iconContainer}>
+              <Ionicons name="settings" size={40} color="#34C759" />
+            </View>
+            <Text style={styles.menuText}>설정</Text>
           </TouchableOpacity>
           
           <TouchableOpacity style={styles.menuItem} onPress={navigateToGameSettings}>
@@ -118,20 +125,6 @@ export default function AdminMainScreen() {
             </View>
             <Text style={styles.menuText}>게임 설정</Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.menuItem} onPress={navigateToMiniGame}>
-            <View style={styles.iconContainer}>
-              <Ionicons name="game-controller" size={40} color="#FF3B30" />
-            </View>
-            <Text style={styles.menuText}>미니 게임</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.menuItem} onPress={navigateToGameRanking}>
-            <View style={styles.iconContainer}>
-              <Ionicons name="trophy" size={40} color="#FFD700" />
-            </View>
-            <Text style={styles.menuText}>게임 랭킹</Text>
-          </TouchableOpacity>
 
           <TouchableOpacity style={styles.menuItem} onPress={navigateToBoardingForm}>
             <View style={styles.iconContainer}>
@@ -139,17 +132,6 @@ export default function AdminMainScreen() {
             </View>
             <Text style={styles.menuText}>명부 작성</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity style={styles.menuItem} onPress={navigateToTodayRoster}>
-            <View style={styles.iconContainer}>
-              <Ionicons name="calendar" size={40} color="#FF5722" />
-            </View>
-            <Text style={styles.menuText}>승선 명부</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>오고피씽 관리자 페이지입니다.</Text>
         </View>
       </ScrollView>
     </SafeAreaView>

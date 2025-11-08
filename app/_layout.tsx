@@ -239,7 +239,9 @@ export default function TabLayout() {
               <Stack.Screen name="stamp-history" />
               <Stack.Screen name="stamp" />
 
+              <Stack.Screen name="mini-games" />
               <Stack.Screen name="mini-games/fishing" />
+              <Stack.Screen name="mini-games/block" />
               <Stack.Screen name="mini-games/ranking" />
               <Stack.Screen name="today-roster" />
               <Stack.Screen name="roster-list" />
@@ -269,7 +271,10 @@ export default function TabLayout() {
       'settings': 'Settings',
       'stamp-history': 'History',
       'stamp': 'Stamps',
-      'mini-games/fishing': 'Game',
+      'mini-games': 'Mini Games',
+      'mini-games/index': 'Mini Games',
+      'mini-games/fishing': 'Fishing',
+      'mini-games/block': 'Block',
       'mini-games/ranking': 'Ranking',
       'admin-fish': 'Fishes',
       'admin-fish-add': 'New Fish',

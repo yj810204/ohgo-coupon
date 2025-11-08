@@ -35,6 +35,10 @@ export default function RosterPreviewScreen() {
   const translateY = useSharedValue(0);
   const savedTranslateX = useSharedValue(0);
   const savedTranslateY = useSharedValue(0);
+  const focalX = useSharedValue(0);
+  const focalY = useSharedValue(0);
+  const imageCenterX = useSharedValue(0);
+  const imageCenterY = useSharedValue(0);
   const scrollViewRef = useRef<ScrollView>(null);
   
   // Function to reset zoom and pan state
@@ -93,19 +97,67 @@ export default function RosterPreviewScreen() {
         }
       }),
 
-    doubleTap: Gesture.Tap()
-      .numberOfTaps(2)
-      .onStart(() => {
+    pinch: Gesture.Pinch()
+      .onBegin((e) => {
         'worklet';
-        console.log('Double tap detected');
+        console.log('Pinch gesture began, focal point:', e.focalX, e.focalY);
+        // Save the focal point (where the user is pinching)
+        focalX.value = e.focalX;
+        focalY.value = e.focalY;
+      })
+      .onUpdate((e) => {
+        'worklet';
+        try {
+          // Calculate new scale based on saved scale and pinch scale
+          const oldScale = savedScale.value;
+          const newScale = oldScale * e.scale;
+          // Limit scale between 0.5x and 5x
+          const clampedScale = Math.max(0.5, Math.min(5, newScale));
+          
+          // To zoom around the focal point:
+          // 1. Find the image point currently under the focal point (in image-local coordinates)
+          //    The image center is at (imageCenterX, imageCenterY) in container coordinates
+          //    With current transform: point on screen = center + translate + localPoint * scale
+          //    So: focal = center + translate + localPoint * oldScale
+          //    Therefore: localPoint = (focal - center - translate) / oldScale
+          //
+          // 2. After scaling to newScale, we want the same localPoint to be under the focal point
+          //    So: focal = center + newTranslate + localPoint * newScale
+          //    Therefore: newTranslate = focal - center - localPoint * newScale
+          
+          const centerX = imageCenterX.value > 0 ? imageCenterX.value : focalX.value;
+          const centerY = imageCenterY.value > 0 ? imageCenterY.value : focalY.value;
+          
+          // Calculate the image-local coordinates of the point under the focal point
+          const localPointX = (focalX.value - centerX - savedTranslateX.value) / oldScale;
+          const localPointY = (focalY.value - centerY - savedTranslateY.value) / oldScale;
+          
+          // Adjust translate so the same image point stays under the focal point after scaling
+          translateX.value = focalX.value - centerX - localPointX * clampedScale;
+          translateY.value = focalY.value - centerY - localPointY * clampedScale;
+          
+          scale.value = clampedScale;
+          
+          // Update zoom state
+          if (clampedScale > 1) {
+            runOnJS(setIsZoomed)(true);
+          } else {
+            runOnJS(setIsZoomed)(false);
+          }
+        } catch (error) {
+          console.error('Error in pinch onUpdate:', error);
+        }
       })
       .onEnd(() => {
         'worklet';
         try {
-          console.log('Double tap gesture ended, current scale:', scale.value);
-          if (scale.value !== 1) {
-            console.log('Double tap - resetting zoom');
-            // Reset zoom directly in the worklet
+          // Save the final scale and translation values
+          savedScale.value = scale.value;
+          savedTranslateX.value = translateX.value;
+          savedTranslateY.value = translateY.value;
+          
+          // If scale is less than 1, animate back to 1
+          if (scale.value < 1) {
             scale.value = withTiming(1);
             savedScale.value = 1;
             translateX.value = withTiming(0);
@@ -113,15 +165,18 @@ export default function RosterPreviewScreen() {
             savedTranslateX.value = 0;
             savedTranslateY.value = 0;
             runOnJS(setIsZoomed)(false);
+          } else if (scale.value === 1) {
+            // Reset translation when scale is exactly 1
+            translateX.value = withTiming(0);
+            translateY.value = withTiming(0);
+            savedTranslateX.value = 0;
+            savedTranslateY.value = 0;
+            runOnJS(setIsZoomed)(false);
           } else {
-            console.log('Double tap - zooming in to 2x');
-            // Zoom in to 2x
-            scale.value = withTiming(2);
-            savedScale.value = 2;
             runOnJS(setIsZoomed)(true);
           }
         } catch (error) {
-          console.error('Error in doubleTap onEnd:', error);
+          console.error('Error in pinch onEnd:', error);
           // Reset to safe values if there's an error
           scale.value = withTiming(1);
           savedScale.value = 1;
@@ -135,11 +190,11 @@ export default function RosterPreviewScreen() {
   }).current;
 
   // Combine gestures - using useRef to ensure stable references
-  // Modified to remove pinch zoom while keeping double-tap zoom and panning
+  // Pinch zoom and pan gestures work simultaneously
   const combinedGestures = useRef(
     Gesture.Simultaneous(
       gestures.pan,
-      gestures.doubleTap
+      gestures.pinch
     )
   ).current;
 
@@ -659,7 +714,16 @@ export default function RosterPreviewScreen() {
 
       <View style={styles.contentContainer}>
         {localImageUri ? (
-          <View style={styles.imageContainer}>
+          <View 
+            style={styles.imageContainer}
+            onLayout={(e) => {
+              const { width, height } = e.nativeEvent.layout;
+              // Calculate center point of the image container
+              imageCenterX.value = width / 2;
+              imageCenterY.value = height / 2;
+              console.log('Image container layout:', { width, height, centerX: width / 2, centerY: height / 2 });
+            }}
+          >
             <GestureDetector gesture={combinedGestures}>
               <Animated.View style={{ width: '100%', alignItems: 'center' }}>
                 <Animated.Image

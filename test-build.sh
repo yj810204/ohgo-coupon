@@ -1,5 +1,7 @@
 #!/bin/bash
-cd /Users/ynjeong/ohgo-coupon
+# Get the directory where the script is located
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR"
 cd android
 # Run the assembleRelease task to test the build process
 ./gradlew :app:assembleRelease

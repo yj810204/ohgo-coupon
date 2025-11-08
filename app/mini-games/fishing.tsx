@@ -12,6 +12,7 @@ import {
   StyleProp,
   ViewStyle,
   Image,
+  ImageBackground,
   Modal,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
@@ -21,6 +22,7 @@ import { db } from '../../firebase';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { loadMiniGameBackground } from '../../utils/mini-game-background';
 // import { notifyAllAdmins } from '../../utils/send-push';
 
 const { width, height } = Dimensions.get('window');
@@ -366,12 +368,14 @@ const Seaweed = ({ style }: { style?: StyleProp<ViewStyle> }) => {
 
 
 // 배경 애니메이션 컨테이너
-const AnimatedBackground = ({ gameState }: { gameState: GameState }) => {
+const AnimatedBackground = ({ gameState, backgroundUri }: { gameState: GameState; backgroundUri?: string | null }) => {
   // 성능 최적화를 위해 애니메이션 개수 조정
   // 버블 개수
   const bubbleCount = gameState === 'reel' ? 5 : 10; // 15에서 10으로 감소
+  // 물결 효과 여부
+  const showWaves = false;
   // 물결 개수
-  const waveCount = 3; // 4에서 3으로 감소
+  const waveCount = showWaves ? 3 : 0;
   // 물고기 실루엣 개수
   const fishCount = gameState === 'reel' ? 3 : 6; // 3에서 6으로 증가
   // 해초 개수
@@ -391,41 +395,45 @@ const AnimatedBackground = ({ gameState }: { gameState: GameState }) => {
     ).start();
   }, []);
 
-  // 바다 깊이에 따른 그라데이션 레이어 생성
-  const renderDepthLayers = () => {
-    // 5개의 레이어로 나누어 점점 어두워지는 효과 생성
-    const layerCount = 5;
-    return Array.from({ length: layerCount }).map((_, index) => {
-      // 위에서부터 아래로 갈수록 더 어두워지는 색상
-      // 기본 바다색 #2a8dc0에서 점점 어두워지는 효과
-      const opacity = 0.15 + (index * 0.1); // 0.15, 0.25, 0.35, 0.45, 0.55
-      const top = (height * 0.15) + ((height * 0.85) / layerCount) * index; // 수면(height * 0.15) 아래부터 시작
-      const layerHeight = (height * 0.85) / layerCount;
-      
+  const pebbleElements = useMemo(() => {
+    return Array.from({ length: 12 }).map((_, index) => {
+      const pebbleWidth = 4 + Math.random() * 8;
+      const pebbleHeight = 3 + Math.random() * 5;
+      const pebbleColor = `rgba(${150 + Math.random() * 50}, ${120 + Math.random() * 40}, ${100 + Math.random() * 30}, 0.8)`;
+      const pebbleTop = Math.random() * 20;
+      const pebbleLeft = (width / 12) * index + (Math.random() * 30 - 15);
+
       return (
-        <View 
-          key={`depth-layer-${index}`}
+        <View
+          key={`pebble-${index}`}
           style={{
             position: 'absolute',
-            top: top,
-            left: 0,
-            right: 0,
-            height: layerHeight,
-            backgroundColor: 'rgba(0, 20, 50, ' + opacity + ')', // 어두운 청색으로 점점 어두워짐
-            zIndex: 0,
+            width: pebbleWidth,
+            height: pebbleHeight,
+            backgroundColor: pebbleColor,
+            borderRadius: 3,
+            top: pebbleTop,
+            left: pebbleLeft,
           }}
         />
       );
     });
-  };
+  }, []);
 
   return (
     <View style={styles.backgroundContainer}>
-      {/* 바다 깊이 그라데이션 레이어 */}
-      {renderDepthLayers()}
-      
+      {backgroundUri ? (
+        <ImageBackground
+          source={{ uri: backgroundUri }}
+          style={styles.backgroundImage}
+          resizeMode="cover"
+        >
+          <View style={styles.backgroundImageOverlay} pointerEvents="none" />
+        </ImageBackground>
+      ) : null}
+
       {/* 물결 애니메이션 */}
-      {Array.from({ length: waveCount }).map((_, index) => (
+      {showWaves && Array.from({ length: waveCount }).map((_, index) => (
         <WaterWave key={`wave-${index}`} index={index} style={{}} />
       ))}
 
@@ -447,55 +455,32 @@ const AnimatedBackground = ({ gameState }: { gameState: GameState }) => {
       {/* 바닥 표시 */}
       <View style={styles.oceanFloor}>
         {/* 바닥 질감을 위한 작은 돌멩이들 - 고정 위치 */}
-        {useMemo(() => {
-          return Array.from({ length: 12 }).map((_, index) => {
-            // 각 돌멩이마다 고정된 랜덤 값 생성
-            const pebbleWidth = 4 + Math.random() * 8;
-            const pebbleHeight = 3 + Math.random() * 5;
-            const pebbleColor = `rgba(${150 + Math.random() * 50}, ${120 + Math.random() * 40}, ${100 + Math.random() * 30}, 0.8)`;
-            const pebbleTop = Math.random() * 20;
-            const pebbleLeft = (width / 12) * index + (Math.random() * 30 - 15);
-            
-            return (
-              <View 
-                key={`pebble-${index}`}
-                style={{
-                  position: 'absolute',
-                  width: pebbleWidth,
-                  height: pebbleHeight,
-                  backgroundColor: pebbleColor,
-                  borderRadius: 3,
-                  top: pebbleTop,
-                  left: pebbleLeft,
-                }}
-              />
-            );
-          });
-        }, [])} 
-        {/* 빈 의존성 배열로 컴포넌트가 처음 렌더링될 때만 실행 */}
+        {pebbleElements}
       </View>
 
       {/* 수면 효과 */}
-      <View style={styles.waterSurface}>
-        {/* 수면 위의 물결 효과 */}
-        <Animated.View style={{
-          position: 'absolute' as const,
-          width: width * 2,
-          height: 4,
-          backgroundColor: 'rgba(255, 255, 255, 0.3)',
-          left: -width / 2,
-          top: 0,
-          transform: [{
-            translateX: waveAnim.interpolate({
-              inputRange: [0, 1],
-              outputRange: [-width / 2, width / 2],
-            })
-          }]
-        }} />
+      {showWaves ? (
+        <View style={styles.waterSurface}>
+          {/* 수면 위의 물결 효과 */}
+          <Animated.View style={{
+            position: 'absolute' as const,
+            width: width * 2,
+            height: 4,
+            backgroundColor: 'rgba(255, 255, 255, 0.3)',
+            left: -width / 2,
+            top: 0,
+            transform: [{
+              translateX: waveAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [-width / 2, width / 2],
+              })
+            }]
+          }} />
 
-        {/* 수면 아래 반사 효과 */}
-        <View style={styles.waterReflection} />
-      </View>
+          {/* 수면 아래 반사 효과 */}
+          <View style={styles.waterReflection} />
+        </View>
+      ) : null}
     </View>
   );
 };
@@ -675,6 +660,46 @@ export default function FishingGame() {
     dob: string;
   }>();
 
+  const availabilityAlertShownRef = useRef(false);
+  const [isMiniGameAvailable, setIsMiniGameAvailable] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const checkAvailability = async () => {
+      try {
+        const visibilityDoc = await getDoc(doc(db, 'gameSettings', 'miniGames'));
+        if (!isMounted) return;
+
+        let enabled = true;
+        if (visibilityDoc.exists()) {
+          const data = visibilityDoc.data();
+          enabled = data.fishingEnabled !== false;
+        }
+
+        setIsMiniGameAvailable(enabled);
+
+        if (!enabled && !availabilityAlertShownRef.current) {
+          availabilityAlertShownRef.current = true;
+          Alert.alert('이용 불가', '현재 낚시 게임은 이용할 수 없습니다.', [
+            {
+              text: '확인',
+              onPress: () => router.back(),
+            },
+          ]);
+        }
+      } catch (error) {
+        console.error('낚시 게임 표시 설정 조회 오류:', error);
+      }
+    };
+
+    checkAvailability();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [router]);
+
   // ... state 정의(동일, 위 코드 참고) ...
   const [fishes, setFishes] = useState<Fish[]>([]); // 물고기 데이터
   const [fishLoading, setFishLoading] = useState(true); // 물고기 데이터 로딩 상태
@@ -746,6 +771,7 @@ export default function FishingGame() {
 
   // 추가 포인트 상태
   const [extraPoint, setExtraPoint] = useState(0);
+  const [backgroundImageUri, setBackgroundImageUri] = useState<string | null>(null);
   
   // 날짜 검증 관련 상태
   const [serverDate, setServerDate] = useState<string>('');
@@ -759,6 +785,25 @@ export default function FishingGame() {
       setIsStartButtonDisabled(false);
     }
   }, [state]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    (async () => {
+      try {
+        const uri = await loadMiniGameBackground('fishing');
+        if (isMounted) {
+          setBackgroundImageUri(uri ?? null);
+        }
+      } catch (error) {
+        console.error('낚시 게임 배경 이미지 로드 오류:', error);
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // 특별 버튼 애니메이션
   const specialButtonAnim = useRef(new Animated.Value(1)).current;
@@ -2163,18 +2208,26 @@ export default function FishingGame() {
   }
 
   // --- UI(리턴 부분) ---
+  if (!isMiniGameAvailable) {
+    return (
+      <View style={[styles.container, styles.containerDefault]}>
+        <Text style={styles.title}>현재 낚시 게임을 이용할 수 없습니다.</Text>
+      </View>
+    );
+  }
+
   if (!uuid) {
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, styles.containerDefault]}>
           <Text style={styles.title}>회원 정보가 없습니다.</Text>
         </View>
     );
   }
 
   return (
-      <View style={styles.container}>
+      <View style={[styles.container, backgroundImageUri ? styles.containerTransparent : styles.containerDefault]}>
         {/* 배경 애니메이션 추가 */}
-        <AnimatedBackground gameState={state} />
+        <AnimatedBackground gameState={state} backgroundUri={backgroundImageUri} />
 
         {(fishLoading || fishes.length === 0) && (
             <View style={{alignItems:'center', justifyContent:'center', flex:1}}>
@@ -3078,12 +3131,17 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    backgroundColor: '#2a8dc0', // 더 밝은 바다색으로 변경
     alignItems: 'center',
     justifyContent: 'center',
     padding: 14,
     position: 'relative',
     overflow: 'hidden', // 배경 애니메이션이 컨테이너를 넘어가지 않도록
+  },
+  containerDefault: {
+    backgroundColor: '#2a8dc0',
+  },
+  containerTransparent: {
+    backgroundColor: 'transparent',
   },
   rankingButton: {
     flexDirection: 'row',
@@ -3122,6 +3180,14 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     zIndex: 0, // 배경이 다른 요소들 뒤에 위치하도록
+  },
+  backgroundImage: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 0,
+  },
+  backgroundImageOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
   },
   oceanFloor: {
     position: 'absolute',

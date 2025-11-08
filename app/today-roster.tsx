@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView, FlatList, ActivityIndicator, Modal, Alert } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView, FlatList, ActivityIndicator, Modal, Alert, ScrollView, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,6 +25,10 @@ export default function TodayRosterScreen() {
   const [selectedTrip, setSelectedTrip] = useState<number | null>(null);
   const [confirmedTrips, setConfirmedTrips] = useState<Record<string, number[]>>({});
   const [usingCachedData, setUsingCachedData] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [totalConfirmedTrips, setTotalConfirmedTrips] = useState<number>(0);
+  const [currentMonthTrips, setCurrentMonthTrips] = useState<number>(0);
+  const [showTotalTrips, setShowTotalTrips] = useState<boolean>(false);
   
   // Cache for month data to avoid redundant fetches
   const [cachedMonths, setCachedMonths] = useState<Record<string, {
@@ -75,13 +79,13 @@ export default function TodayRosterScreen() {
   };
   
   // Fetch roster data for the current month
-  const fetchRosterData = async () => {
+  const fetchRosterData = async (forceRefresh: boolean = false) => {
     setLoading(true);
     try {
       const monthKey = format(currentMonth, 'yyyy-MM');
       
-      // Check if we already have cached data for this month
-      if (cachedMonths[monthKey]) {
+      // Check if we already have cached data for this month (skip if forceRefresh is true)
+      if (!forceRefresh && cachedMonths[monthKey]) {
         console.log('Using cached data for month:', monthKey);
         setDatesWithRoster(cachedMonths[monthKey].datesWithRoster);
         setConfirmedTrips(cachedMonths[monthKey].confirmedTrips);
@@ -218,6 +222,20 @@ export default function TodayRosterScreen() {
     fetchRosterData();
   }, [currentMonth]);
   
+  // Load total confirmed trips on mount
+  useEffect(() => {
+    fetchTotalConfirmedTrips();
+  }, []);
+
+  // Calculate current month trips count
+  useEffect(() => {
+    let count = 0;
+    Object.values(confirmedTrips).forEach(trips => {
+      count += trips.length;
+    });
+    setCurrentMonthTrips(count);
+  }, [confirmedTrips]);
+  
   // Add a timeout to hide loading indicator if it takes too long
   useEffect(() => {
     if (loading) {
@@ -267,11 +285,71 @@ export default function TodayRosterScreen() {
     router.back();
   };
 
+  // Fetch total confirmed trips count
+  const fetchTotalConfirmedTrips = async () => {
+    try {
+      const tripsQuery = query(collection(db, 'trips'));
+      const tripsSnapshot = await getDocs(tripsQuery);
+      
+      let totalCount = 0;
+      
+      tripsSnapshot.forEach(doc => {
+        const tripsData = doc.data();
+        
+        // Define the trip data type with proper typing
+        interface TripData {
+          confirmed: boolean;
+          confirmedAt: string;
+        }
+        
+        // Define the document data type with index signature for dynamic trip keys
+        interface TripsDocData {
+          [key: `trip${number}`]: TripData;
+        }
+        
+        // Cast the data to our typed interface
+        const typedTripsData = tripsData as TripsDocData;
+        
+        // Count confirmed trips (1, 2, 3)
+        for (let i = 1; i <= 3; i++) {
+          const tripKey = `trip${i}` as `trip${number}`;
+          if (typedTripsData[tripKey] && typedTripsData[tripKey].confirmed) {
+            totalCount++;
+          }
+        }
+      });
+      
+      setTotalConfirmedTrips(totalCount);
+    } catch (error) {
+      console.error('Error fetching total confirmed trips:', error);
+    }
+  };
+
+  // Handle pull-to-refresh
+  const onRefresh = async () => {
+    setRefreshing(true);
+    // Force refresh by ignoring cache
+    await fetchRosterData(true);
+    await fetchTotalConfirmedTrips();
+    setRefreshing(false);
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="auto" />
-
-      <View style={styles.calendarContainer}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollViewContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#1e88e5']}
+            tintColor="#1e88e5"
+          />
+        }
+      >
+        <View style={styles.calendarContainer}>
         <View style={styles.calendarHeader}>
           <TouchableOpacity onPress={prevMonth} disabled={loading}>
             <Ionicons name="chevron-back" size={24} color={loading ? "#ccc" : "#333"} />
@@ -280,12 +358,6 @@ export default function TodayRosterScreen() {
             <Text style={styles.calendarTitle}>
               {format(currentMonth, dateFormat)}
             </Text>
-            {usingCachedData && (
-              <View style={styles.cachedIndicator}>
-                <Ionicons name="flash" size={14} color="#4caf50" />
-                <Text style={styles.cachedText}>빠른 로딩</Text>
-              </View>
-            )}
           </View>
           <TouchableOpacity onPress={nextMonth} disabled={loading}>
             <Ionicons name="chevron-forward" size={24} color={loading ? "#ccc" : "#333"} />
@@ -369,9 +441,47 @@ export default function TodayRosterScreen() {
         )}
       </View>
       
-      <View style={styles.infoContainer}>
-        <Text style={styles.infoText}>날짜를 선택하면 해당 날짜의 명부를 확인할 수 있습니다.</Text>
-      </View>
+        <View style={styles.infoContainer}>
+          <Text style={styles.infoText}>날짜를 선택하면 해당 날짜의 명부를 확인할 수 있습니다.</Text>
+          <View style={styles.statsContainer}>
+            <View style={styles.statCard}>
+              <View style={styles.statIconContainer}>
+                <Ionicons name="calendar-outline" size={24} color="#1e88e5" />
+              </View>
+              <Text style={styles.statLabel}>이번 달 출항수</Text>
+              <View style={styles.statValueContainer}>
+                <Text style={styles.statValue}>{currentMonthTrips.toLocaleString()}</Text>
+                <Text style={styles.statUnitInline}>회</Text>
+              </View>
+            </View>
+            {showTotalTrips && (
+              <View style={styles.statCard}>
+                <View style={styles.statIconContainer}>
+                  <Ionicons name="stats-chart-outline" size={24} color="#4caf50" />
+                </View>
+                <Text style={styles.statLabel}>총 누적 출항수</Text>
+                <View style={styles.statValueContainer}>
+                  <Text style={styles.statValue}>{totalConfirmedTrips.toLocaleString()}</Text>
+                  <Text style={styles.statUnitInline}>회</Text>
+                </View>
+              </View>
+            )}
+          </View>
+          <TouchableOpacity 
+            style={styles.toggleButton}
+            onPress={() => setShowTotalTrips(!showTotalTrips)}
+          >
+            <Ionicons 
+              name={showTotalTrips ? "chevron-up-outline" : "chevron-down-outline"} 
+              size={20} 
+              color="#666" 
+            />
+            <Text style={styles.toggleButtonText}>
+              {showTotalTrips ? "총 누적 출항수 숨기기" : "총 누적 출항수 보기"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
 
       {/* Trip Selection Modal */}
       <Modal
@@ -443,17 +553,8 @@ export default function TodayRosterScreen() {
                             });
                           }
                         } else {
-                          // For past dates, only allow viewing existing rosters, not creating new ones
-                          if (isDateBeforeToday(tempSelectedDate)) {
-                            // Show alert that new entries can't be created for past dates
-                            Alert.alert(
-                              '알림',
-                              '오늘 이전의 명부는 미리보기만 가능하고 신규 작성은 불가능합니다.',
-                              [{ text: '확인', onPress: () => setModalVisible(false) }]
-                            );
-                          } else {
-                            handleTripSelection(1);
-                          }
+                          // Allow creating new rosters for any date
+                          handleTripSelection(1);
                         }
                       }}
                     >
@@ -515,17 +616,8 @@ export default function TodayRosterScreen() {
                             });
                           }
                         } else {
-                          // For past dates, only allow viewing existing rosters, not creating new ones
-                          if (isDateBeforeToday(tempSelectedDate)) {
-                            // Show alert that new entries can't be created for past dates
-                            Alert.alert(
-                              '알림',
-                              '오늘 이전의 명부는 미리보기만 가능하고 신규 작성은 불가능합니다.',
-                              [{ text: '확인', onPress: () => setModalVisible(false) }]
-                            );
-                          } else {
-                            handleTripSelection(2);
-                          }
+                          // Allow creating new rosters for any date
+                          handleTripSelection(2);
                         }
                       }}
                     >
@@ -587,17 +679,8 @@ export default function TodayRosterScreen() {
                             });
                           }
                         } else {
-                          // For past dates, only allow viewing existing rosters, not creating new ones
-                          if (isDateBeforeToday(tempSelectedDate)) {
-                            // Show alert that new entries can't be created for past dates
-                            Alert.alert(
-                              '알림',
-                              '오늘 이전의 명부는 미리보기만 가능하고 신규 작성은 불가능합니다.',
-                              [{ text: '확인', onPress: () => setModalVisible(false) }]
-                            );
-                          } else {
-                            handleTripSelection(3);
-                          }
+                          // Allow creating new rosters for any date
+                          handleTripSelection(3);
                         }
                       }}
                     >
@@ -630,6 +713,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f7f9fc',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollViewContent: {
+    flexGrow: 1,
   },
   pastDateCell: {
     backgroundColor: '#f0f0f0',
@@ -711,21 +800,6 @@ const styles = StyleSheet.create({
     fontFamily: "GiantRegular",
     color: '#333',
   },
-  cachedIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#e8f5e9',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 10,
-    marginTop: 4,
-  },
-  cachedText: {
-    fontSize: 10,
-    color: '#4caf50',
-    marginLeft: 2,
-    fontFamily: "GiantRegular",
-  },
   daysHeader: {
     flexDirection: 'row',
     justifyContent: 'space-around',
@@ -780,7 +854,83 @@ const styles = StyleSheet.create({
     color: '#666',
     fontSize: 14,
     textAlign: 'center',
-    fontFamily: "GiantRegular"
+    fontFamily: "GiantRegular",
+    marginBottom: 16,
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    paddingHorizontal: 8,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    marginHorizontal: 6,
+  },
+  statIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#f5f5f5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#666',
+    fontFamily: "GiantRegular",
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  statValueContainer: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'center',
+  },
+  statValue: {
+    fontSize: 28,
+    color: '#333',
+    fontFamily: "GiantRegular",
+    fontWeight: 'bold',
+  },
+  statUnitInline: {
+    fontSize: 16,
+    color: '#999',
+    fontFamily: "GiantRegular",
+    marginLeft: 4,
+  },
+  statUnit: {
+    fontSize: 14,
+    color: '#999',
+    fontFamily: "GiantRegular",
+  },
+  toggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: '#f5f5f5',
+  },
+  toggleButtonText: {
+    fontSize: 14,
+    color: '#666',
+    fontFamily: "GiantRegular",
+    marginLeft: 6,
   },
   // Modal styles
   modalOverlay: {

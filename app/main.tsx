@@ -25,7 +25,7 @@ export default function MainScreen() {
 
   const navigateToMiniGames = () => {
     router.push({
-      pathname: '/mini-games/fishing',
+      pathname: '/mini-games',
       params: params,
     });
   };

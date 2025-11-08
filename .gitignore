@@ -12,3 +12,13 @@ node_modules
 *.apk
 node_modules/
 .expo/
+
+# macOS resource fork files
+._*
+.DS_Store
+.DS_Store?
+._.DS_Store
+.Spotlight-V100
+.Trashes
+.AppleDouble
+.LSOverride
