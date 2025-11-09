@@ -266,107 +266,6 @@ const FishSilhouette = ({ style }: { style?: StyleProp<ViewStyle> }) => {
   );
 };
 
-// 해초 애니메이션 컴포넌트
-const Seaweed = ({ style }: { style?: StyleProp<ViewStyle> }) => {
-  // 성능 최적화: 랜덤 값을 useRef로 미리 계산
-  const seaweedHeight = useRef(50 + Math.random() * 100).current; // 높이 범위 (50~150px)
-  const seaweedWidth = useRef(10 + Math.random() * 10).current; // 너비 범위 (10~20px)
-  const xPos = useRef(Math.random() * width).current; // x 위치
-  const segments = useRef(3 + Math.floor(Math.random() * 3)).current; // 해초 마디 개수 (3~5)
-  const animatedValue = useRef(new Animated.Value(0)).current;
-  const hue = useRef(140 + Math.random() * 40).current; // 초록색 계열 (140~180)
-  const saturation = useRef(60 + Math.random() * 30).current; // 채도 (60~90%)
-  const lightness = useRef(30 + Math.random() * 20).current; // 명도 (30~50%)
-  
-  // 바닥에 딱 일치하게 설정 (매립 깊이 0)
-  const embedDepth = useRef(0).current;
-
-  useEffect(() => {
-    // 애니메이션 시작
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(animatedValue, {
-          toValue: 1,
-          duration: 2000 + Math.random() * 1000,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(animatedValue, {
-          toValue: 0,
-          duration: 2000 + Math.random() * 1000,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        })
-      ])
-    );
-
-    animation.start();
-
-    // 클린업 함수에서 애니메이션 중지
-    return () => {
-      animation.stop();
-    };
-  }, []);
-
-  // 해초 마디 생성
-  const renderSegments = () => {
-    return Array.from({ length: segments }).map((_, index) => {
-      const segmentHeight = seaweedHeight / segments;
-      const segmentColor = `hsla(${hue}, ${saturation}%, ${lightness - (index * 5)}%, 0.7)`;
-
-      // 바닥에 박혀있는 부분은 더 어둡게 표현
-      const isEmbedded = index === segments - 1; // 가장 아래 세그먼트
-      const embeddedColor = isEmbedded
-        ? `hsla(${hue}, ${saturation}%, ${Math.max(lightness - 15, 10)}%, 0.8)`
-        : segmentColor;
-
-      return (
-        <Animated.View
-          key={`segment-${index}`}
-          style={{
-            position: 'absolute',
-            width: seaweedWidth - (index * (seaweedWidth / segments / 2)), // 위로 갈수록 약간 얇아짐
-            height: segmentHeight,
-            backgroundColor: embeddedColor,
-            borderRadius: seaweedWidth / 2,
-            bottom: index * segmentHeight - (isEmbedded ? embedDepth : 0), // 가장 아래 세그먼트는 바닥에 박혀있음
-            transform: [{
-              rotate: animatedValue.interpolate({
-                inputRange: [0, 1],
-                // 바닥에 박힌 부분은 움직임이 적게
-                outputRange: isEmbedded
-                  ? [`${-2}deg`, `${2}deg`]
-                  : [`${-5 - (index * 3)}deg`, `${5 + (index * 3)}deg`]
-              })
-            }],
-            zIndex: segments - index, // 위쪽 세그먼트가 더 앞에 보이도록
-          }}
-        />
-      );
-    });
-  };
-
-  return (
-    <View
-      style={[
-        {
-          position: 'absolute',
-          width: seaweedWidth,
-          height: seaweedHeight,
-          left: xPos,
-          bottom: 37, // 바닥에 딱 일치하게 설정
-          overflow: 'visible',
-          zIndex: 0, // 바닥보다 뒤에 표시 (맨뒤에)
-        },
-        style
-      ]}
-    >
-      {renderSegments()}
-    </View>
-  );
-};
-
-
 // 배경 애니메이션 컨테이너
 const AnimatedBackground = ({ gameState, backgroundUri }: { gameState: GameState; backgroundUri?: string | null }) => {
   // 성능 최적화를 위해 애니메이션 개수 조정
@@ -378,8 +277,6 @@ const AnimatedBackground = ({ gameState, backgroundUri }: { gameState: GameState
   const waveCount = showWaves ? 3 : 0;
   // 물고기 실루엣 개수
   const fishCount = gameState === 'reel' ? 3 : 6; // 3에서 6으로 증가
-  // 해초 개수
-  const seaweedCount = 8; // 5에서 8로 증가
 
   // 수면 물결 애니메이션
   const waveAnim = useRef(new Animated.Value(0)).current;
@@ -445,11 +342,6 @@ const AnimatedBackground = ({ gameState, backgroundUri }: { gameState: GameState
       {/* 물고기 실루엣 애니메이션 */}
       {Array.from({ length: fishCount }).map((_, index) => (
         <FishSilhouette key={`fish-${index}`} style={{}} />
-      ))}
-      
-      {/* 해초 애니메이션 - 바닥보다 뒤에 배치 */}
-      {Array.from({ length: seaweedCount }).map((_, index) => (
-        <Seaweed key={`seaweed-${index}`} style={{}} />
       ))}
       
       {/* 바닥 표시 */}
