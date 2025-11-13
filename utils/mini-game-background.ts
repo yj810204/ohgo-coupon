@@ -26,7 +26,7 @@ const resolveExtension = (url: string) => {
   const ext = withoutQuery.split('.').pop();
   if (!ext) return 'jpg';
   const normalized = ext.toLowerCase();
-  if (['jpg', 'jpeg', 'png', 'webp'].includes(normalized)) {
+  if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(normalized)) {
     return normalized === 'jpeg' ? 'jpg' : normalized;
   }
   return 'jpg';

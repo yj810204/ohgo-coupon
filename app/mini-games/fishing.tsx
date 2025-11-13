@@ -15,6 +15,7 @@ import {
   ImageBackground,
   Modal,
 } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { Vibration } from 'react-native';
 import { collection, getDocs, doc, getDoc, setDoc, addDoc, updateDoc, increment, runTransaction, onSnapshot, serverTimestamp } from 'firebase/firestore';
@@ -61,317 +62,30 @@ interface Fish {
   [key: string]: any; // 추가 속성을 위한 인덱스 시그니처
 }
 
-// 배경 애니메이션을 위한 컴포넌트
-const WaterBubble = ({ style }: { style?: StyleProp<ViewStyle> }) => {
-  // 성능 최적화: 랜덤 값을 useRef로 미리 계산하여 리렌더링 방지
-  const bubbleSize = useRef(10 + Math.random() * 15).current; // 크기 범위 축소 (10~25px)
-  const animatedValue = useRef(new Animated.Value(0)).current;
-  const xPos = useRef(Math.random() * width).current;
-  const duration = useRef(6000 + Math.random() * 4000).current; // 지속 시간 범위 축소 (6~10초)
-
-  // 성능 최적화: 컴포넌트 마운트 시 한 번만 실행
-  useEffect(() => {
-    // 애니메이션 시작
-    const animation = Animated.loop(
-      Animated.timing(animatedValue, {
-        toValue: 1,
-        duration: duration,
-        easing: Easing.linear,
-        useNativeDriver: true, // 네이티브 드라이버 사용으로 성능 향상
-      })
-    );
-
-    animation.start();
-
-    // 클린업 함수에서 애니메이션 중지
-    return () => {
-      animation.stop();
-    };
-  }, []);
-
-  // 미리 계산된 스타일 객체
-  const animatedStyle = {
-    position: 'absolute' as const,
-    width: bubbleSize,
-    height: bubbleSize,
-    borderRadius: bubbleSize / 2,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    left: xPos,
-    transform: [
-      {
-        translateY: animatedValue.interpolate({
-          inputRange: [0, 1],
-          outputRange: [height + bubbleSize, -bubbleSize * 2],
-        }),
-      },
-      {
-        translateX: animatedValue.interpolate({
-          inputRange: [0, 0.5, 1],
-          outputRange: [0, 10, 0], // 움직임 범위 축소
-        }),
-      },
-      {
-        scale: animatedValue.interpolate({
-          inputRange: [0, 0.5, 1],
-          outputRange: [1, 1.1, 1], // 크기 변화 축소
-        }),
-      },
-    ],
-    opacity: animatedValue.interpolate({
-      inputRange: [0, 0.8, 1],
-      outputRange: [0.5, 0.7, 0], // 투명도 범위 축소
-    }),
-  };
-
-  return <Animated.View style={[animatedStyle, style]} />;
-};
-
-// 물결 애니메이션 컴포넌트
-const WaterWave = ({ style, index = 0 }: { style?: StyleProp<ViewStyle>; index?: number }) => {
-  const waveAnim = useRef(new Animated.Value(0)).current;
-  const startDelay = useRef(index * 800).current; // 딜레이 시간 감소
-  const duration = useRef(10000 - index * 500).current; // 각 물결마다 다른 속도
-
-  useEffect(() => {
-    // 타이머 참조 저장
-    const timer = setTimeout(() => {
-      // 애니메이션 참조 저장
-      const animation = Animated.loop(
-        Animated.timing(waveAnim, {
-          toValue: 1,
-          duration: duration,
-          easing: Easing.linear,
-          useNativeDriver: true, // 네이티브 드라이버 사용
-        })
-      );
-
-      animation.start();
-
-      // 클린업 함수에서 애니메이션 중지
-      return () => {
-        animation.stop();
-      };
-    }, startDelay);
-
-    // 클린업 함수에서 타이머 제거
-    return () => {
-      clearTimeout(timer);
-    };
-  }, []);
-
-  // 미리 계산된 스타일 객체
-  const animatedStyle = {
-    position: 'absolute' as const,
-    width: width * 2,
-    height: 40, // 높이 감소
-    backgroundColor: 'rgba(100, 200, 255, 0.1)',
-    borderRadius: 20, // 높이에 맞게 조정
-    bottom: 60 + index * 35, // 간격 조정
-    left: -width / 2,
-    transform: [
-      {
-        translateX: waveAnim.interpolate({
-          inputRange: [0, 0.5, 1],
-          outputRange: [0, width / 5, 0], // 이동 거리 감소
-        }),
-      },
-      {
-        translateY: waveAnim.interpolate({
-          inputRange: [0, 0.5, 1],
-          outputRange: [0, index % 2 === 0 ? -5 : 5, 0], // 단순화된 움직임
-        }),
-      },
-    ],
-  };
-
-  return <Animated.View style={[animatedStyle, style]} />;
-};
-
-// 물고기 실루엣 애니메이션 컴포넌트
-const FishSilhouette = ({ style }: { style?: StyleProp<ViewStyle> }) => {
-  // 성능 최적화: 모든 랜덤 값을 useRef로 미리 계산
-  const fishSize = useRef(15 + Math.random() * 20).current; // 크기 범위 축소 (15~35px)
-  const animatedValue = useRef(new Animated.Value(0)).current;
-  const yPos = useRef(height * 0.4 + Math.random() * (height * 0.3)).current; // 위치 범위 축소
-  const direction = useRef(Math.random() > 0.5 ? 1 : -1).current; // 왼쪽 또는 오른쪽으로 이동
-  const duration = useRef(12000 + Math.random() * 8000).current; // 지속 시간 범위 축소 (12~20초)
-
-  // 물고기 꼬리 스타일 미리 계산
-  const tailStyle = useRef({
-    position: 'absolute' as const,
-    left: -fishSize/4, // Changed from right to left to reverse the tail direction
-    top: fishSize/8,
-    width: fishSize/3,
-    height: fishSize/4,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    borderTopLeftRadius: fishSize/4, // Changed from Right to Left
-    borderBottomLeftRadius: fishSize/4, // Changed from Right to Left
-    transform: [{ scaleX: direction > 0 ? 1 : -1 }]
-  }).current;
-
-  useEffect(() => {
-    // 애니메이션 참조 저장
-    const animation = Animated.loop(
-      Animated.timing(animatedValue, {
-        toValue: 1,
-        duration: duration,
-        easing: Easing.linear,
-        useNativeDriver: true, // 네이티브 드라이버 사용
-      })
-    );
-
-    animation.start();
-
-    // 클린업 함수에서 애니메이션 중지
-    return () => {
-      animation.stop();
-    };
-  }, []);
-
-  // 미리 계산된 스타일 객체
-  const animatedStyle = {
-    position: 'absolute' as const,
-    width: fishSize,
-    height: fishSize / 2,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    borderRadius: fishSize / 4,
-    top: yPos,
-    transform: [
-      {
-        translateX: animatedValue.interpolate({
-          inputRange: [0, 1],
-          outputRange: direction > 0 ?
-            [-fishSize, width + fishSize] :
-            [width + fishSize, -fishSize],
-        }),
-      },
-      {
-        scaleX: direction, // 방향에 따라 물고기 방향 전환
-      },
-      {
-        translateY: animatedValue.interpolate({
-          inputRange: [0, 0.5, 1],
-          outputRange: [0, direction > 0 ? -5 : 5, 0], // 단순화된 움직임
-        }),
-      },
-    ],
-    opacity: 0.3, // 투명도 감소
-  };
-
-  return (
-    <Animated.View style={[animatedStyle, style]}>
-      {/* 물고기 꼬리 */}
-      <View style={tailStyle} />
-    </Animated.View>
-  );
-};
-
 // 배경 애니메이션 컨테이너
-const AnimatedBackground = ({ gameState, backgroundUri }: { gameState: GameState; backgroundUri?: string | null }) => {
-  // 성능 최적화를 위해 애니메이션 개수 조정
-  // 버블 개수
-  const bubbleCount = gameState === 'reel' ? 5 : 10; // 15에서 10으로 감소
-  // 물결 효과 여부
-  const showWaves = false;
-  // 물결 개수
-  const waveCount = showWaves ? 3 : 0;
-  // 물고기 실루엣 개수
-  const fishCount = gameState === 'reel' ? 3 : 6; // 3에서 6으로 증가
-
-  // 수면 물결 애니메이션
-  const waveAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.loop(
-      Animated.timing(waveAnim, {
-        toValue: 1,
-        duration: 10000,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      })
-    ).start();
-  }, []);
-
-  const pebbleElements = useMemo(() => {
-    return Array.from({ length: 12 }).map((_, index) => {
-      const pebbleWidth = 4 + Math.random() * 8;
-      const pebbleHeight = 3 + Math.random() * 5;
-      const pebbleColor = `rgba(${150 + Math.random() * 50}, ${120 + Math.random() * 40}, ${100 + Math.random() * 30}, 0.8)`;
-      const pebbleTop = Math.random() * 20;
-      const pebbleLeft = (width / 12) * index + (Math.random() * 30 - 15);
-
-      return (
-        <View
-          key={`pebble-${index}`}
-          style={{
-            position: 'absolute',
-            width: pebbleWidth,
-            height: pebbleHeight,
-            backgroundColor: pebbleColor,
-            borderRadius: 3,
-            top: pebbleTop,
-            left: pebbleLeft,
-          }}
-        />
-      );
-    });
-  }, []);
+const AnimatedBackground = ({ backgroundUri }: { gameState: GameState; backgroundUri?: string | null }) => {
+  const isGifBackground = useMemo(() => {
+    if (!backgroundUri) return false;
+    const uriWithoutQuery = backgroundUri.split('?')[0].toLowerCase();
+    return uriWithoutQuery.endsWith('.gif');
+  }, [backgroundUri]);
 
   return (
     <View style={styles.backgroundContainer}>
       {backgroundUri ? (
-        <ImageBackground
-          source={{ uri: backgroundUri }}
-          style={styles.backgroundImage}
-          resizeMode="cover"
-        >
-          <View style={styles.backgroundImageOverlay} pointerEvents="none" />
-        </ImageBackground>
-      ) : null}
-
-      {/* 물결 애니메이션 */}
-      {showWaves && Array.from({ length: waveCount }).map((_, index) => (
-        <WaterWave key={`wave-${index}`} index={index} style={{}} />
-      ))}
-
-      {/* 버블 애니메이션 */}
-      {Array.from({ length: bubbleCount }).map((_, index) => (
-        <WaterBubble key={`bubble-${index}`} style={{}} />
-      ))}
-
-      {/* 물고기 실루엣 애니메이션 */}
-      {Array.from({ length: fishCount }).map((_, index) => (
-        <FishSilhouette key={`fish-${index}`} style={{}} />
-      ))}
-      
-      {/* 바닥 표시 */}
-      <View style={styles.oceanFloor}>
-        {/* 바닥 질감을 위한 작은 돌멩이들 - 고정 위치 */}
-        {pebbleElements}
-      </View>
-
-      {/* 수면 효과 */}
-      {showWaves ? (
-        <View style={styles.waterSurface}>
-          {/* 수면 위의 물결 효과 */}
-          <Animated.View style={{
-            position: 'absolute' as const,
-            width: width * 2,
-            height: 4,
-            backgroundColor: 'rgba(255, 255, 255, 0.3)',
-            left: -width / 2,
-            top: 0,
-            transform: [{
-              translateX: waveAnim.interpolate({
-                inputRange: [0, 1],
-                outputRange: [-width / 2, width / 2],
-              })
-            }]
-          }} />
-
-          {/* 수면 아래 반사 효과 */}
-          <View style={styles.waterReflection} />
-        </View>
+        isGifBackground ? (
+          <ExpoImage
+            source={{ uri: backgroundUri }}
+            style={styles.backgroundImage}
+            contentFit="cover"
+          />
+        ) : (
+          <ImageBackground
+            source={{ uri: backgroundUri }}
+            style={styles.backgroundImage}
+            resizeMode="cover"
+          />
+        )
       ) : null}
     </View>
   );
@@ -846,7 +560,7 @@ export default function FishingGame() {
   }, [state, reelGauge]);
 
   // 물고기 파닥거림 타이머 참조
-  const flutterTimerRef = useRef<number | null>(null);
+  const flutterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 물고기 자동 파닥거림 효과 - 불규칙적으로 변경
   useEffect(() => {

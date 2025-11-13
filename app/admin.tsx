@@ -38,6 +38,34 @@ export default function AdminScreen() {
   const [isLoadingStats, setIsLoadingStats] = useState(false);
   const [statsLoadingProgress, setStatsLoadingProgress] = useState<{ loaded: number; total: number } | null>(null);
   const statsLoadedRef = useRef<Set<string>>(new Set());
+  const hasLoadedRef = useRef(false);
+  const lastLoadedAtRef = useRef<number>(0);
+  const cacheUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const saveMembersToCache = useCallback(
+    async (
+      membersToCache: any[],
+      todayMembersToCache: any[],
+      sectionsToCache: any[],
+      options?: { silent?: boolean; timestampOverride?: number }
+    ) => {
+      try {
+        const cacheData = {
+          timestamp: options?.timestampOverride ?? Date.now(),
+          members: membersToCache,
+          todayMembers: todayMembersToCache,
+          sections: sectionsToCache,
+        };
+        await AsyncStorage.setItem(MEMBERS_CACHE_KEY, JSON.stringify(cacheData));
+        if (!options?.silent) {
+          console.log('✅ Member data cached');
+        }
+      } catch (error) {
+        console.error('❌ Error caching member data:', error);
+      }
+    },
+    []
+  );
 
   // Helper function to get days from months
   const getDaysFromMonths = (months: number) => months * 30;
@@ -97,17 +125,22 @@ export default function AdminScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      const currentKeyword = keyword;
-      const currentFilter = activeFilter;
-      const currentInactivePeriod = inactivePeriod;
-      
-      fetchMembers().then(() => {
-        // 데이터 로드 완료 후 검색 상태 복원
-        if (currentKeyword.trim().length > 0 || currentFilter !== 'all') {
+      if (hasLoadedRef.current) {
+        if (Date.now() - lastLoadedAtRef.current > CACHE_EXPIRY_TIME) {
+          fetchMembers(true).then(() => {
+            restoreSearchState();
+          });
+        } else {
           restoreSearchState();
         }
-      });
-    }, [])
+      } else {
+        fetchMembers().then(() => {
+          if (keyword.trim().length > 0 || activeFilter !== 'all') {
+            restoreSearchState();
+          }
+        });
+      }
+    }, [restoreSearchState])
   );
 
   const onRefresh = async () => {
@@ -121,6 +154,28 @@ export default function AdminScreen() {
     fetchMembers();
     restoreCollapsedState();
   }, []);
+
+  useEffect(() => {
+    if (cacheUpdateTimeoutRef.current) {
+      clearTimeout(cacheUpdateTimeoutRef.current);
+      cacheUpdateTimeoutRef.current = null;
+    }
+
+    if (allMembers.length === 0) return;
+
+    cacheUpdateTimeoutRef.current = setTimeout(() => {
+      cacheUpdateTimeoutRef.current = null;
+      saveMembersToCache(allMembers, todayMembers, sections, { silent: true });
+      lastLoadedAtRef.current = Date.now();
+    }, 300);
+
+    return () => {
+      if (cacheUpdateTimeoutRef.current) {
+        clearTimeout(cacheUpdateTimeoutRef.current);
+        cacheUpdateTimeoutRef.current = null;
+      }
+    };
+  }, [allMembers, todayMembers, sections, saveMembersToCache]);
 
   // allMembers가 로드되고 검색 상태가 있으면 복원 (useFocusEffect에서 처리하지 못한 경우 대비)
   useEffect(() => {
@@ -188,8 +243,6 @@ export default function AdminScreen() {
   }
 
   const fetchMembers = async (forceRefresh = false) => {
-    setIsLoading(true);
-    
     // Try to load from cache if not forcing refresh
     if (!forceRefresh) {
       try {
@@ -203,6 +256,8 @@ export default function AdminScreen() {
             setAllMembers(members);
             setTodayMembers(cachedTodayMembers);
             setSections(cachedSections);
+            hasLoadedRef.current = true;
+            lastLoadedAtRef.current = timestamp ?? Date.now();
             setIsLoading(false);
             // Load stats in background if missing
             if (members.some((m: any) => m.couponCount === undefined)) {
@@ -216,6 +271,7 @@ export default function AdminScreen() {
       }
     }
     
+    setIsLoading(true);
     // Step 1: Fetch basic user info first (fast)
     console.log('📥 Loading basic member info...');
     const snapshot = await getDocs(collection(db, 'users'));
@@ -284,21 +340,9 @@ export default function AdminScreen() {
     
     // 로딩 상태를 false로 설정하여 검색 UI 활성화
     setIsLoading(false);
+    hasLoadedRef.current = true;
+    lastLoadedAtRef.current = Date.now();
     console.log('✅ Basic member info loaded, starting stats loading...');
-
-    // Save to cache with current timestamp
-    try {
-      const cacheData = {
-        timestamp: Date.now(),
-        members: users,
-        todayMembers: joinedToday,
-        sections: fullSections,
-      };
-      await AsyncStorage.setItem(MEMBERS_CACHE_KEY, JSON.stringify(cacheData));
-      console.log('✅ Member data cached');
-    } catch (error) {
-      console.error('❌ Error caching member data:', error);
-    }
 
     // Step 2: Load stats in background (batch processing for better performance)
     loadStatsInBackground(users.map(u => u.uuid));

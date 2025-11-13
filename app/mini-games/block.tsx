@@ -19,6 +19,7 @@ import {
   ViewStyle,
   ImageBackground,
 } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -49,517 +50,6 @@ const BLOCK_EMOJIS = [
   { emoji: '🥝', color: '#96CEB4' }, // Kiwi (Green - 초록색)
 ];
 
-// 배경 애니메이션을 위한 컴포넌트
-// 하늘에서 떨어지는 과일 애니메이션
-const FloatingBlock = ({ style }: { style?: StyleProp<ViewStyle> }) => {
-  const blockSize = useRef(25 + Math.random() * 20).current; // 25~45px로 크게 증가
-  const emojiSize = blockSize * 1.2; // 이모지 실제 크기
-  const animatedValue = useRef(new Animated.Value(0)).current;
-  const xPos = useRef(Math.random() * width).current;
-  const duration = useRef(3000 + Math.random() * 2000).current; // 3~5초로 더 빠르게
-  const emojiIndex = useRef(Math.floor(Math.random() * BLOCK_EMOJIS.length)).current;
-  const startY = useRef(-50 - Math.random() * 50).current; // 하늘에서 시작 (화면 위쪽 밖)
-  const endY = useRef(height + emojiSize + 20).current; // 화면 아래로 떨어짐 (이모지 크기 고려)
-
-  useEffect(() => {
-    const animation = Animated.loop(
-      Animated.timing(animatedValue, {
-        toValue: 1,
-        duration: duration,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      })
-    );
-
-    animation.start();
-
-    return () => {
-      animation.stop();
-    };
-  }, []);
-
-  const animatedStyle = {
-    position: 'absolute' as const,
-    left: xPos,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    width: emojiSize + 30, // 이모지보다 충분히 큰 컨테이너 (여유 공간 확대)
-    height: emojiSize + 30, // 이모지가 잘리지 않도록 충분한 여유 공간
-    overflow: 'visible' as const, // 잘림 방지
-    transform: [
-      {
-        translateY: animatedValue.interpolate({
-          inputRange: [0, 1],
-          outputRange: [startY, endY], // 위에서 아래로 떨어짐
-        }),
-      },
-      {
-        translateX: animatedValue.interpolate({
-          inputRange: [0, 0.5, 1],
-          outputRange: [0, 15, 0], // 좌우 흔들림 감소 (더 부드럽게)
-        }),
-      },
-      {
-        rotate: animatedValue.interpolate({
-          inputRange: [0, 1],
-          outputRange: ['0deg', '360deg'], // 회전하면서 떨어짐
-        }),
-      },
-    ],
-    opacity: 1, // 투명도 제거 - 항상 불투명하게
-  };
-
-  return (
-    <Animated.View style={[animatedStyle, style]} collapsable={false}>
-      <Text 
-        style={{ 
-          fontSize: emojiSize, 
-          opacity: 1, 
-          textAlign: 'center',
-          includeFontPadding: false, // 폰트 패딩 제거로 잘림 방지
-          textAlignVertical: 'center',
-        }}
-      >
-        {BLOCK_EMOJIS[emojiIndex].emoji}
-      </Text>
-    </Animated.View>
-  );
-};
-
-// 떠다니는 입자 애니메이션
-const FloatingParticle = ({ style }: { style?: StyleProp<ViewStyle> }) => {
-  const particleSize = useRef(3 + Math.random() * 4).current;
-  const animatedValue = useRef(new Animated.Value(0)).current;
-  const xPos = useRef(Math.random() * width).current;
-  const duration = useRef(6000 + Math.random() * 4000).current;
-  const colors = ['#FF6B6B', '#FFB347', '#FFEAA7', '#DDA0DD', '#96CEB4'];
-  const color = useRef(colors[Math.floor(Math.random() * colors.length)]).current;
-
-  useEffect(() => {
-    const animation = Animated.loop(
-      Animated.timing(animatedValue, {
-        toValue: 1,
-        duration: duration,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      })
-    );
-
-    animation.start();
-
-    return () => {
-      animation.stop();
-    };
-  }, []);
-
-  const animatedStyle = {
-    position: 'absolute' as const,
-    width: particleSize,
-    height: particleSize,
-    borderRadius: particleSize / 2,
-    backgroundColor: color,
-    left: xPos,
-    transform: [
-      {
-        translateY: animatedValue.interpolate({
-          inputRange: [0, 1],
-          outputRange: [height + particleSize, -particleSize * 2],
-        }),
-      },
-      {
-        translateX: animatedValue.interpolate({
-          inputRange: [0, 0.5, 1],
-          outputRange: [0, 10, 0],
-        }),
-      },
-      {
-        scale: animatedValue.interpolate({
-          inputRange: [0, 0.5, 1],
-          outputRange: [1, 1.2, 1],
-        }),
-      },
-    ],
-    opacity: animatedValue.interpolate({
-      inputRange: [0, 0.8, 1],
-      outputRange: [0.3, 0.5, 0],
-    }),
-  };
-
-  return <Animated.View style={[animatedStyle, style]} />;
-};
-
-// 반짝이는 별 애니메이션
-const StarSparkle = ({ style }: { style?: StyleProp<ViewStyle> }) => {
-  const starSize = useRef(4 + Math.random() * 6).current;
-  const animatedValue = useRef(new Animated.Value(0)).current;
-  const xPos = useRef(Math.random() * width).current;
-  const yPos = useRef(Math.random() * height).current;
-  const duration = useRef(2000 + Math.random() * 2000).current;
-
-  useEffect(() => {
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(animatedValue, {
-          toValue: 1,
-          duration: duration,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(animatedValue, {
-          toValue: 0,
-          duration: duration,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-
-    animation.start();
-
-    return () => {
-      animation.stop();
-    };
-  }, []);
-
-  const animatedStyle = {
-    position: 'absolute' as const,
-    width: starSize,
-    height: starSize,
-    left: xPos,
-    top: yPos,
-    transform: [
-      {
-        scale: animatedValue.interpolate({
-          inputRange: [0, 0.5, 1],
-          outputRange: [0.5, 1.0, 0.5], // 스케일 범위 감소 (더 부드럽게)
-        }),
-      },
-      {
-        rotate: animatedValue.interpolate({
-          inputRange: [0, 1],
-          outputRange: ['0deg', '180deg'],
-        }),
-      },
-    ],
-    opacity: animatedValue.interpolate({
-      inputRange: [0, 0.5, 1],
-      outputRange: [0.2, 0.5, 0.2], // 투명도 감소 (더 부드럽고 덜 눈에 띄게)
-    }),
-  };
-
-  return (
-    <Animated.View style={[animatedStyle, style]}>
-      <Text style={{ fontSize: starSize, color: '#FFD700', opacity: 0.7 }}>✨</Text>
-    </Animated.View>
-  );
-};
-
-const FloatingCube = ({ style }: { style?: StyleProp<ViewStyle> }) => {
-  const shapeSize = useRef(18 + Math.random() * 16).current;
-  const cubeAnim = useRef(new Animated.Value(0)).current;
-  const baseX = useRef(Math.random() * width).current;
-  const baseY = useRef(height * 0.2 + Math.random() * (height * 0.3)).current;
-  const duration = useRef(4500 + Math.random() * 2500).current;
-  const cubePalette = useRef([
-    { background: '#66bb6a', border: '#43a047' },
-    { background: '#a5d6a7', border: '#81c784' },
-    { background: '#dce775', border: '#c0ca33' },
-    { background: '#80cbc4', border: '#4db6ac' },
-  ]).current;
-  const paletteIndex = useRef(Math.floor(Math.random() * cubePalette.length)).current;
-  const shapeType = useRef(['triangle', 'square', 'circle'][Math.floor(Math.random() * 3)]).current;
-
-  useEffect(() => {
-    const animation = Animated.loop(
-      Animated.timing(cubeAnim, {
-        toValue: 1,
-        duration,
-        easing: Easing.inOut(Easing.quad),
-        useNativeDriver: true,
-      })
-    );
-    animation.start();
-    return () => animation.stop();
-  }, []);
-
-  const animatedStyle = {
-    position: 'absolute' as const,
-    width: shapeSize,
-    height: shapeSize,
-    left: baseX,
-    top: baseY,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    transform: [
-      {
-        translateY: cubeAnim.interpolate({
-          inputRange: [0, 0.5, 1],
-          outputRange: [0, -20, 0],
-        }),
-      },
-      {
-        translateX: cubeAnim.interpolate({
-          inputRange: [0, 0.5, 1],
-          outputRange: [0, 12, 0],
-        }),
-      },
-      {
-        rotate: cubeAnim.interpolate({
-          inputRange: [0, 1],
-          outputRange: ['0deg', '10deg'],
-        }),
-      },
-    ],
-    opacity: cubeAnim.interpolate({
-      inputRange: [0, 0.5, 1],
-      outputRange: [0.8, 1, 0.8],
-    }),
-    shadowColor: cubePalette[paletteIndex].border,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 5,
-  };
-
-  const renderShape = () => {
-    if (shapeType === 'triangle') {
-      return (
-        <View
-          style={{
-            width: shapeSize,
-            height: shapeSize,
-            alignItems: 'center',
-            justifyContent: 'flex-end',
-          }}
-        >
-          <View
-            style={{
-              width: 0,
-              height: 0,
-              borderLeftWidth: shapeSize / 2,
-              borderRightWidth: shapeSize / 2,
-              borderBottomWidth: shapeSize,
-              borderLeftColor: 'transparent',
-              borderRightColor: 'transparent',
-              borderBottomColor: cubePalette[paletteIndex].background,
-            }}
-          />
-        </View>
-      );
-    }
-
-    const borderRadius = shapeType === 'circle' ? shapeSize / 2 : 6;
-    return (
-      <View
-        style={{
-          width: shapeSize,
-          height: shapeSize,
-          borderRadius,
-          backgroundColor: cubePalette[paletteIndex].background,
-          borderWidth: 1,
-          borderColor: cubePalette[paletteIndex].border,
-        }}
-      />
-    );
-  };
-
-  return (
-    <Animated.View style={[animatedStyle, style]}>
-      {renderShape()}
-    </Animated.View>
-  );
-};
-
-const FloatingSpark = ({ style }: { style?: StyleProp<ViewStyle> }) => {
-  const sparkAnim = useRef(new Animated.Value(0)).current;
-  const sparkPalette = useRef([
-    { icon: '◆', color: '#e8f5e9' },
-    { icon: '⬣', color: '#c8e6c9' },
-    { icon: '◇', color: '#b2dfdb' },
-  ]).current;
-  const paletteIndex = useRef(Math.floor(Math.random() * sparkPalette.length)).current;
-  const baseLeft = useRef(Math.random() * width).current;
-  const baseTop = useRef(height * 0.25 + Math.random() * (height * 0.45)).current;
-  const duration = useRef(2400 + Math.random() * 1600).current;
-
-  useEffect(() => {
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(sparkAnim, {
-          toValue: 1,
-          duration,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(sparkAnim, {
-          toValue: 0,
-          duration,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    animation.start();
-    return () => animation.stop();
-  }, []);
-
-  const animatedStyle = {
-    position: 'absolute' as const,
-    left: baseLeft,
-    top: baseTop,
-    transform: [
-      {
-        translateY: sparkAnim.interpolate({
-          inputRange: [0, 1],
-          outputRange: [0, -16],
-        }),
-      },
-      {
-        scale: sparkAnim.interpolate({
-          inputRange: [0, 0.5, 1],
-          outputRange: [0.7, 1.1, 0.7],
-        }),
-      },
-    ],
-    opacity: sparkAnim.interpolate({
-      inputRange: [0, 0.5, 1],
-      outputRange: [0.6, 1, 0.6],
-    }),
-  };
-
-  return (
-    <Animated.View style={[animatedStyle, style]}>
-      <Text style={{ color: sparkPalette[paletteIndex].color, fontSize: 12 }}>
-        {sparkPalette[paletteIndex].icon}
-      </Text>
-    </Animated.View>
-  );
-};
-
-// 그라데이션 웨이브 애니메이션
-const GradientWave = ({ style, index = 0 }: { style?: StyleProp<ViewStyle>; index?: number }) => {
-  const waveAnim = useRef(new Animated.Value(0)).current;
-  const startDelay = useRef(index * 1000).current;
-  const duration = useRef(12000 - index * 800).current;
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const animation = Animated.loop(
-        Animated.timing(waveAnim, {
-          toValue: 1,
-          duration: duration,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        })
-      );
-
-      animation.start();
-
-      return () => {
-        animation.stop();
-      };
-    }, startDelay);
-
-    return () => {
-      clearTimeout(timer);
-    };
-  }, []);
-
-  const colors = [
-    'rgba(102, 187, 106, 0.12)',
-    'rgba(129, 199, 132, 0.12)',
-    'rgba(165, 214, 167, 0.12)',
-    'rgba(200, 230, 201, 0.12)',
-    'rgba(178, 223, 219, 0.12)',
-  ];
-
-  const animatedStyle = {
-    position: 'absolute' as const,
-    width: width * 2,
-    height: 60,
-    backgroundColor: colors[index % colors.length],
-    borderRadius: 30,
-    bottom: 40 + index * 50,
-    left: -width / 2,
-    transform: [
-      {
-        translateX: waveAnim.interpolate({
-          inputRange: [0, 0.5, 1],
-          outputRange: [0, width / 4, 0],
-        }),
-      },
-      {
-        translateY: waveAnim.interpolate({
-          inputRange: [0, 0.5, 1],
-          outputRange: [0, index % 2 === 0 ? -8 : 8, 0],
-        }),
-      },
-    ],
-  };
-
-  return <Animated.View style={[animatedStyle, style]} />;
-};
-
-// 배경 애니메이션 컨테이너 (간소화된 UI)
-const AnimatedBackground = ({ gameState }: { gameState: GameState }) => {
-  const floatingCubeCount = gameState === 'playing' ? 12 : 6;
-  const sparkCount = gameState === 'playing' ? 24 : 12;
-  const starCount = gameState === 'playing' ? 6 : 4;
-
-
-  const renderGradientLayers = () => {
-    const layerCount = 3; // 레이어 수 감소
-    const layerColors = [
-      { r: 224, g: 242, b: 233 },
-      { r: 200, g: 230, b: 201 },
-      { r: 174, g: 213, b: 129 },
-    ];
-    return Array.from({ length: layerCount }).map((_, index) => {
-      const opacity = 0.15 + (index * 0.08); // 더 부드러운 opacity (0.15~0.31)
-      const top = (height / layerCount) * index;
-      const layerHeight = height / layerCount;
-
-      return (
-        <View
-          key={`gradient-layer-${index}`}
-          style={{
-            position: 'absolute',
-            top: top,
-            left: 0,
-            right: 0,
-            height: layerHeight,
-            // 부드러운 녹색 계열의 배경색
-            backgroundColor: `rgba(${layerColors[index % layerColors.length].r}, ${layerColors[index % layerColors.length].g}, ${layerColors[index % layerColors.length].b}, ${opacity})`,
-            zIndex: 0,
-          }}
-        />
-      );
-    });
-  };
-
-  return (
-    <View style={styles.backgroundContainer} pointerEvents="none">
-      {/* 부드러운 그라데이션 레이어 */}
-      {renderGradientLayers()}
-
-      {/* 떠다니는 큐브 */}
-      {Array.from({ length: floatingCubeCount }).map((_, index) => (
-        <FloatingCube key={`floating-cube-${index}`} />
-      ))}
-
-      {/* 반짝이는 스파크 */}
-      {Array.from({ length: sparkCount }).map((_, index) => (
-        <FloatingSpark key={`spark-${index}`} />
-      ))}
-
-      {/* 반짝이는 별 (간소화) */}
-      {Array.from({ length: starCount }).map((_, index) => (
-        <StarSparkle key={`star-${index}`} />
-      ))}
-
-    </View>
-  );
-};
 
 // 폭죽 애니메이션 컴포넌트
 const Firework = ({ style, x, y, delay = 0, size = 1 }: { 
@@ -724,6 +214,11 @@ export default function BlockGame() {
   const availabilityAlertShownRef = useRef(false);
   const [isMiniGameAvailable, setIsMiniGameAvailable] = useState(true);
   const [backgroundImageUri, setBackgroundImageUri] = useState<string | null>(null);
+  const isGifBackground = useMemo(() => {
+    if (!backgroundImageUri) return false;
+    const uriWithoutQuery = backgroundImageUri.split('?')[0].toLowerCase();
+    return uriWithoutQuery.endsWith('.gif');
+  }, [backgroundImageUri]);
   
   // Create a stable ref object to store parameters
   const paramsRef = useRef<{ uuid: string | null }>({ uuid: null });
@@ -2264,18 +1759,21 @@ export default function BlockGame() {
     <SafeAreaView style={[styles.container, backgroundImageUri ? styles.containerTransparent : styles.containerDefault]}>
       <StatusBar style="auto" />
       {backgroundImageUri ? (
-        <ImageBackground
-          source={{ uri: backgroundImageUri }}
-          style={styles.backgroundImage}
-          resizeMode="cover"
-        >
-          <View style={styles.backgroundImageOverlay} pointerEvents="none" />
-        </ImageBackground>
+        isGifBackground ? (
+          <ExpoImage
+            source={{ uri: backgroundImageUri }}
+            style={styles.backgroundImage}
+            contentFit="cover"
+          />
+        ) : (
+          <ImageBackground
+            source={{ uri: backgroundImageUri }}
+            style={styles.backgroundImage}
+            resizeMode="cover"
+          />
+        )
       ) : null}
       
-      <AnimatedBackground gameState={gameState} />
-
-
       {/* 이벤트 정보 배너 - 상단에 배치 (게임 시작하면 안보이게 처리) */}
       {tournament && gameState === 'idle' && (
         <TouchableOpacity
@@ -2397,6 +1895,7 @@ export default function BlockGame() {
               <Text style={styles.scoreLabel}>점수</Text>
               <Text style={styles.scoreValue}>{score}</Text>
             </View>
+            <View style={styles.scoreSeparator} />
             <View style={styles.scoreBox}>
               <Text style={styles.scoreLabel}>시간</Text>
               <Text style={[
@@ -2750,27 +2249,40 @@ const styles = StyleSheet.create({
   },
   scoreContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 15,
-    backgroundColor: 'rgba(232, 245, 233, 0.95)',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+    borderRadius: 18,
+    marginTop: 12,
     marginBottom: 20,
     position: 'relative',
     zIndex: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+    alignSelf: 'center',
   },
   scoreBox: {
     alignItems: 'center',
+    minWidth: 90,
   },
   scoreLabel: {
-    fontSize: 14,
+    fontSize: 12,
     fontFamily: 'GiantRegular',
-    color: BLOCK_THEME_PRIMARY_DARK,
-    marginBottom: 5,
+    color: 'rgba(255, 255, 255, 0.85)',
+    marginBottom: 4,
   },
   scoreValue: {
     fontSize: 24,
     fontFamily: 'GiantRegular',
-    color: BLOCK_THEME_PRIMARY,
+    color: '#FFFFFF',
+  },
+  scoreSeparator: {
+    width: 1,
+    height: 28,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    marginHorizontal: 16,
   },
   gameContainer: {
     flex: 1,
