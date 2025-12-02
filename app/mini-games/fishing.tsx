@@ -277,6 +277,21 @@ export default function FishingGame() {
         const visibilityDoc = await getDoc(doc(db, 'gameSettings', 'miniGames'));
         if (!isMounted) return;
 
+        // 게임 설정 무시 사용자 목록 확인
+        let isBypassUser = false;
+        if (visibilityDoc.exists()) {
+          const data = visibilityDoc.data();
+          const bypassUsers = data.bypassVisibilityUsers || [];
+          if (Array.isArray(bypassUsers) && bypassUsers.includes(name)) {
+            isBypassUser = true;
+          }
+        }
+
+        if (isBypassUser) {
+          setIsMiniGameAvailable(true);
+          return;
+        }
+
         let enabled = true;
         if (visibilityDoc.exists()) {
           const data = visibilityDoc.data();
@@ -304,7 +319,7 @@ export default function FishingGame() {
     return () => {
       isMounted = false;
     };
-  }, [router]);
+  }, [router, name]);
 
   // ... state 정의(동일, 위 코드 참고) ...
   const [fishes, setFishes] = useState<Fish[]>([]); // 물고기 데이터

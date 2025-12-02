@@ -37,6 +37,7 @@ export default function AdminGameSettingsScreen() {
   const [fishingGameEnabled, setFishingGameEnabled] = useState(true);
   const [blockGameEnabled, setBlockGameEnabled] = useState(true);
   const [savingMiniGameSettings, setSavingMiniGameSettings] = useState(false);
+  const [bypassVisibilityUsers, setBypassVisibilityUsers] = useState('');
   const [fishingBackgroundUrl, setFishingBackgroundUrl] = useState('');
   const [blockBackgroundUrl, setBlockBackgroundUrl] = useState('');
   const [savingBackgroundSettings, setSavingBackgroundSettings] = useState(false);
@@ -163,9 +164,16 @@ export default function AdminGameSettingsScreen() {
         const data = miniGamesDoc.data();
         setFishingGameEnabled(data.fishingEnabled !== false);
         setBlockGameEnabled(data.blockEnabled !== false);
+        // 테스트 사용자 목록 불러오기 (배열을 쉼표로 구분된 문자열로 변환)
+        if (data.bypassVisibilityUsers && Array.isArray(data.bypassVisibilityUsers)) {
+          setBypassVisibilityUsers(data.bypassVisibilityUsers.join(', '));
+        } else {
+          setBypassVisibilityUsers('');
+        }
       } else {
         setFishingGameEnabled(true);
         setBlockGameEnabled(true);
+        setBypassVisibilityUsers('');
       }
     } catch (error) {
       console.error('Error fetching mini game settings:', error);
@@ -347,9 +355,16 @@ export default function AdminGameSettingsScreen() {
     try {
       setSavingMiniGameSettings(true);
 
+      // 테스트 사용자 목록을 배열로 변환 (쉼표로 구분, 공백 제거)
+      const usersArray = bypassVisibilityUsers
+        .split(',')
+        .map(user => user.trim())
+        .filter(user => user.length > 0);
+
       await setDoc(doc(db, 'gameSettings', 'miniGames'), {
         fishingEnabled: fishingGameEnabled,
         blockEnabled: blockGameEnabled,
+        bypassVisibilityUsers: usersArray,
         updatedAt: new Date()
       }, { merge: true });
 
@@ -819,6 +834,20 @@ export default function AdminGameSettingsScreen() {
                 <Text style={styles.toggleText}>{blockGameEnabled ? '켜짐' : '꺼짐'}</Text>
               </TouchableOpacity>
             </View>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>게임 설정 무시 사용자 목록</Text>
+            <TextInput
+              style={[styles.input, styles.textArea]}
+              value={bypassVisibilityUsers}
+              onChangeText={setBypassVisibilityUsers}
+              placeholder="홍길동, 테스트사용자 (쉼표로 구분)"
+              multiline={true}
+            />
+            <Text style={styles.helpText}>
+              입력한 사용자들은 게임 표시 설정과 관계없이 항상 모든 게임을 이용할 수 있습니다. 사용자명을 쉼표로 구분하여 입력하세요.
+            </Text>
           </View>
 
           <TouchableOpacity

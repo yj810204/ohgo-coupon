@@ -241,8 +241,24 @@ export default function BlockGame() {
 
     const checkAvailability = async () => {
       try {
+        const userName = searchParams.name as string;
         const visibilityDoc = await getDoc(doc(db, 'gameSettings', 'miniGames'));
         if (!isMounted) return;
+
+        // 게임 설정 무시 사용자 목록 확인
+        let isBypassUser = false;
+        if (visibilityDoc.exists()) {
+          const data = visibilityDoc.data();
+          const bypassUsers = data.bypassVisibilityUsers || [];
+          if (Array.isArray(bypassUsers) && bypassUsers.includes(userName)) {
+            isBypassUser = true;
+          }
+        }
+
+        if (isBypassUser) {
+          setIsMiniGameAvailable(true);
+          return;
+        }
 
         let enabled = true;
         if (visibilityDoc.exists()) {
@@ -271,7 +287,7 @@ export default function BlockGame() {
     return () => {
       isMounted = false;
     };
-  }, [router]);
+  }, [router, searchParams.name]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1351,15 +1367,73 @@ export default function BlockGame() {
     // Prevent double-clicking
     setIsStartButtonDisabled(true);
     
+    // Check if params are initialized and uuid is available
+    if (!paramsInitializedRef.current || !paramsRef.current.uuid) {
+      Alert.alert('오류', '회원 정보가 없습니다.');
+      setIsStartButtonDisabled(false);
+      return;
+    }
+    
+    // users/{userId}/boarding/info 문서가 존재하는지 확인
+    try {
+      const boardingInfoDoc = await getDoc(doc(db, `users/${paramsRef.current.uuid}/boarding/info`));
+      if (!boardingInfoDoc.exists()) {
+        Alert.alert('알림', '원활한 서비스 제공을 위해 승선 정보 입력이 필요합니다.');
+        setIsStartButtonDisabled(false); // 오류 발생 시 버튼 다시 활성화
+        return;
+      }
+    } catch (error) {
+      console.error('사용자 정보 확인 오류:', error);
+      Alert.alert('오류', '승선 정보를 확인하는 중 오류가 발생했습니다.');
+      setIsStartButtonDisabled(false); // 오류 발생 시 버튼 다시 활성화
+      return;
+    }
+    
     if (!isWithinTournamentPeriod()) {
       Alert.alert('이벤트 기간이 아닙니다', '이벤트 기간 내에만 게임에 참여할 수 있습니다.');
       setIsStartButtonDisabled(false);
       return;
     }
 
-    // Consume bait first
+    // 서버에서 현재 미끼 사용량 가져와서 검증
     try {
-      await consumeBait();
+      const usageSnap = await getDoc(doc(db, `users/${paramsRef.current.uuid}/baitUsage`, todayStr()));
+      const serverBaitUsed = usageSnap.exists() ? (usageSnap.data().used || 0) : 0;
+      
+      // 서버의 미끼 사용량이 로컬 상태보다 많으면 상태 업데이트
+      if (serverBaitUsed > todayBaitUsed) {
+        setTodayBaitUsed(serverBaitUsed);
+        const newBaitCount = Math.max(0, dailyBaitLimit - serverBaitUsed);
+        setBaitCount(newBaitCount);
+      }
+      
+      // 미끼 사용량이 dailyLimit에 도달했는지 확인 (미끼 차감 전에 체크)
+      // used >= dailyLimit이면 게임 시작 불가
+      if (serverBaitUsed >= dailyBaitLimit) {
+        Alert.alert('미끼가 부족합니다', '오늘은 더이상 게임할 수 없습니다!');
+        setIsStartButtonDisabled(false);
+        return;
+      }
+      
+      // 남은 미끼가 0 이하이면 게임 시작 불가
+      const remainingBait = dailyBaitLimit - serverBaitUsed;
+      if (remainingBait <= 0) {
+        Alert.alert('미끼가 부족합니다', '오늘은 더이상 게임할 수 없습니다!');
+        setIsStartButtonDisabled(false);
+        return;
+      }
+    } catch (error) {
+      console.error('미끼 사용량 확인 오류:', error);
+      setIsStartButtonDisabled(false);
+      return;
+    }
+
+    // Consume bait - fishing.tsx처럼 baitUsed 체크 없이 직접 Firebase에 업데이트
+    try {
+      const usageRef = doc(db, `users/${paramsRef.current.uuid}/baitUsage`, todayStr());
+      await setDoc(usageRef, { used: increment(1), date: todayStr() }, { merge: true });
+      setTodayBaitUsed(u => u + 1);
+      setBaitUsed(true); // 세션 내 중복 차감 방지
     } catch (error) {
       console.error('Error consuming bait:', error);
       setIsStartButtonDisabled(false);
@@ -1428,7 +1502,11 @@ export default function BlockGame() {
         },
         {
           text: '확인',
-          onPress: startGame
+          onPress: () => {
+            // 게임 재시작 시 baitUsed 상태를 false로 리셋하여 미끼 차감이 정상 작동하도록 함
+            setBaitUsed(false);
+            startGame();
+          }
         }
       ]
     );
@@ -1439,6 +1517,12 @@ export default function BlockGame() {
     registerPlayerAction();
     // Check if params are initialized and uuid is available
     if (!paramsInitializedRef.current || !paramsRef.current.uuid || baitCoupons <= 0) return;
+    
+    // 미끼가 남아있을 때는 교환권 사용 불가
+    if (baitCount > 0) {
+      Alert.alert('미끼 있음', '미끼가 남아있을 때는 교환권을 사용할 수 없습니다.');
+      return;
+    }
     
     try {
       // Update bait coupons in Firebase
@@ -1460,17 +1544,20 @@ export default function BlockGame() {
         });
       });
       
-      // Set bait count to baitPerCoupon value
+      // 미끼 추가 - 현재 사용량에서 baitPerCoupon만큼 빼기
       const usageRef = doc(db, `users/${paramsRef.current.uuid}/baitUsage`, todayStr());
-      await setDoc(usageRef, { 
-        used: 0, // Reset used bait count to 0
+      const usageSnap = await getDoc(usageRef);
+      const currentUsed = usageSnap.exists() ? (usageSnap.data().used || 0) : 0;
+      
+      // 미끼 사용량 감소 (= 미끼 추가)
+      await setDoc(usageRef, {
+        used: Math.max(0, currentUsed - baitPerCoupon),
         date: todayStr(),
-        fromCoupon: true
       }, { merge: true });
       
       // Update local state
       setBaitCoupons(prev => prev - 1);
-      setTodayBaitUsed(0);
+      setTodayBaitUsed(prev => Math.max(0, prev - baitPerCoupon));
       setBaitCount(baitPerCoupon);
       
       // Show success message

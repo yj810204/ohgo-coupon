@@ -19,9 +19,30 @@ export default function MiniGamesMenu() {
 
     const fetchVisibility = async () => {
       try {
+        const userName = params.name as string;
         const visibilityDoc = await getDoc(doc(db, 'gameSettings', 'miniGames'));
 
         if (!isMounted) return;
+
+        // 게임 설정 무시 사용자 목록 확인
+        let isBypassUser = false;
+        if (visibilityDoc.exists()) {
+          const data = visibilityDoc.data();
+          const bypassUsers = data.bypassVisibilityUsers || [];
+          if (Array.isArray(bypassUsers) && bypassUsers.includes(userName)) {
+            isBypassUser = true;
+          }
+        }
+
+        if (isBypassUser) {
+          // 게임 설정 무시 사용자는 항상 모든 게임 활성화
+          setFishingEnabled(true);
+          setBlockEnabled(true);
+          if (isMounted) {
+            setLoading(false);
+          }
+          return;
+        }
 
         if (visibilityDoc.exists()) {
           const data = visibilityDoc.data();
@@ -48,7 +69,7 @@ export default function MiniGamesMenu() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [params.name]);
 
   const navigateToFishing = () => {
     router.push({
