@@ -2,10 +2,11 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import { collection, getDocs, getDoc, doc, query, where, limit } from 'firebase/firestore';
+import { collection, getDocs, getDoc, getCountFromServer, doc, query, where, limit } from 'firebase/firestore';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   RefreshControl,
   SectionList,
   StyleSheet,
@@ -41,6 +42,22 @@ export default function AdminScreen() {
   const hasLoadedRef = useRef(false);
   const lastLoadedAtRef = useRef<number>(0);
   const cacheUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadingOpacity = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (statsLoadingProgress) {
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(loadingOpacity, { toValue: 0.2, duration: 700, useNativeDriver: true }),
+          Animated.timing(loadingOpacity, { toValue: 1, duration: 700, useNativeDriver: true }),
+        ])
+      );
+      loop.start();
+      return () => loop.stop();
+    } else {
+      loadingOpacity.setValue(1);
+    }
+  }, [statsLoadingProgress]);
 
   const saveMembersToCache = useCallback(
     async (
@@ -275,23 +292,25 @@ export default function AdminScreen() {
     // Step 1: Fetch basic user info first (fast)
     console.log('📥 Loading basic member info...');
     const snapshot = await getDocs(collection(db, 'users'));
-    const users = snapshot.docs.map(doc => ({
-      id: doc.id,
-      uuid: doc.data().uuid,
-      name: doc.data().name,
-      dob: doc.data().dob,
-      createdAt: doc.data().createdAt,
-              lastStampTime: doc.data().lastStampTime,
-        gender: undefined as string | undefined, // Will be loaded from boarding/info
-        // Initialize stats as undefined to show loading state
-        tripCount: undefined as number | undefined, // 승선 횟수 (users 문서에서 직접 가져옴)
+    const users = snapshot.docs.map(d => {
+      const data = d.data();
+      return {
+        id: d.id,
+        uuid: data.uuid,
+        name: data.name,
+        dob: data.dob,
+        createdAt: data.createdAt,
+        lastStampTime: data.lastStampTime,
+        gender: undefined as string | undefined,
+        tripCount: data.tripCount ?? 0,
         couponCount: undefined as number | undefined,
-        halfCouponCount: undefined as number | undefined, // 50% 쿠폰 개수
-        fullCouponCount: undefined as number | undefined, // 100% 쿠폰 개수
+        halfCouponCount: undefined as number | undefined,
+        fullCouponCount: undefined as number | undefined,
         stampCount: undefined as number | undefined,
         hasMemo: undefined as boolean | undefined,
         hasBoarding: undefined as boolean | undefined,
-      }));
+      };
+    });
 
     // Immediately show basic info
     const todayKST = new Date();
@@ -348,106 +367,93 @@ export default function AdminScreen() {
     loadStatsInBackground(users.map(u => u.uuid));
   };
 
-  // Load stats in batches to avoid overwhelming Firebase with too many concurrent requests
   const loadStatsInBackground = async (uuids: string[]) => {
     statsLoadedRef.current.clear();
-    
-    // Remove duplicates and filter out invalid uuids
+
     const uniqueUuids = [...new Set(uuids.filter(uuid => uuid && typeof uuid === 'string'))];
     const totalCount = uniqueUuids.length;
-    
+
     if (totalCount === 0) {
       setStatsLoadingProgress(null);
       return;
     }
-    
+
     setStatsLoadingProgress({ loaded: 0, total: totalCount });
-    
-    const BATCH_SIZE = 15; // Process 15 members at a time
-    const BATCH_DELAY = 100; // 100ms delay between batches
-    
+
+    const BATCH_SIZE = 25;
+    const BATCH_DELAY = 50;
+
     let loadedCount = 0;
-    
-    // Process uuids in batches
+
     for (let i = 0; i < uniqueUuids.length; i += BATCH_SIZE) {
       const batch = uniqueUuids.slice(i, i + BATCH_SIZE);
-      
-      // Process each batch in parallel
+      const batchResults: { uuid: string; stats: any }[] = [];
+
       const batchPromises = batch.map((uuid) => {
-        // Skip if already loaded or loading
         if (statsLoadedRef.current.has(uuid)) {
           loadedCount++;
-          setStatsLoadingProgress({ loaded: loadedCount, total: totalCount });
           return Promise.resolve();
         }
-        
+
         return (async () => {
           try {
-            const [couponsRef, stampsRef, memoRef, boardingRef, userDoc] = await Promise.all([
-              getDocs(collection(db, `users/${uuid}/coupons`)),
-              getDocs(collection(db, `users/${uuid}/stamps`)),
-              getDocs(collection(db, `users/${uuid}/memo`)),
-              getDocs(collection(db, `users/${uuid}/boarding`)),
-              getDoc(doc(db, 'users', uuid)),
+            const couponsRef = collection(db, `users/${uuid}/coupons`);
+            const activeCouponsQuery = query(couponsRef, where('used', '==', false));
+
+            const [activeCouponsSnap, stampCountSnap, memoSnap, boardingInfoDoc] = await Promise.all([
+              getDocs(activeCouponsQuery),
+              getCountFromServer(collection(db, `users/${uuid}/stamps`)),
+              getDocs(query(collection(db, `users/${uuid}/memo`), limit(10))),
+              getDoc(doc(db, `users/${uuid}/boarding/info`)),
             ]);
-            
-            const activeCoupons = couponsRef.docs.filter((couponDoc: any) => !couponDoc.data().used);
-            // 50% 쿠폰과 100% 쿠폰 구분
-            const halfCoupons = activeCoupons.filter((couponDoc: any) => couponDoc.data().isHalf === 'Y');
-            const fullCoupons = activeCoupons.filter((couponDoc: any) => couponDoc.data().isHalf !== 'Y');
-            const halfCouponCount = halfCoupons.length;
-            const fullCouponCount = fullCoupons.length;
-            const hasMemo = memoRef.docs.some((memoDoc: any) => !memoDoc.data().deleted);
-            const boardingInfoDoc = boardingRef.docs.find((boardingDoc: any) => boardingDoc.id === 'info');
-            const hasBoarding = !!boardingInfoDoc;
-            // 성별 정보가 없으면 null로 명시적으로 설정 (undefined는 로딩 중으로 간주)
-            const gender = boardingInfoDoc?.data()?.gender || null;
-            const tripCount = userDoc.exists() ? (userDoc.data().tripCount !== undefined ? userDoc.data().tripCount : 0) : 0;
-            
+
+            const halfCouponCount = activeCouponsSnap.docs.filter((d: any) => d.data().isHalf === 'Y').length;
+            const fullCouponCount = activeCouponsSnap.docs.length - halfCouponCount;
+            const hasMemo = memoSnap.docs.some((d: any) => !d.data().deleted);
+            const hasBoarding = boardingInfoDoc.exists();
+            const gender = boardingInfoDoc.exists() ? (boardingInfoDoc.data()?.gender || null) : null;
+
             statsLoadedRef.current.add(uuid);
             loadedCount++;
-            
-            // Progress update
-            setStatsLoadingProgress({ loaded: loadedCount, total: totalCount });
-            
-            // 해당 회원의 정보가 로드되면 즉시 해당 회원만 업데이트 (점진적 업데이트)
-            setAllMembers(prev => {
-              return prev.map(member => {
-                if (member.uuid === uuid) {
-                  return {
-                    ...member,
-                    couponCount: activeCoupons.length,
-                    halfCouponCount,
-                    fullCouponCount,
-                    stampCount: stampsRef.docs.length,
-                    hasMemo,
-                    hasBoarding,
-                    gender,
-                    tripCount,
-                  };
-                }
-                return member;
-              });
+
+            batchResults.push({
+              uuid,
+              stats: {
+                couponCount: activeCouponsSnap.docs.length,
+                halfCouponCount,
+                fullCouponCount,
+                stampCount: stampCountSnap.data().count,
+                hasMemo,
+                hasBoarding,
+                gender,
+              },
             });
           } catch (error) {
             console.error(`❗ Error loading stats for ${uuid}:`, error);
-            // Update progress even on error
             loadedCount++;
-            setStatsLoadingProgress({ loaded: loadedCount, total: totalCount });
           }
         })();
       });
-      
-      // Wait for current batch to complete
+
       await Promise.all(batchPromises);
-      
-      // Small delay between batches to avoid overwhelming Firebase
+
+      if (batchResults.length > 0) {
+        const statsMap = new Map(batchResults.map(r => [r.uuid, r.stats]));
+        setAllMembers(prev =>
+          prev.map(member => {
+            const stats = statsMap.get(member.uuid);
+            return stats ? { ...member, ...stats } : member;
+          })
+        );
+      }
+
+      setStatsLoadingProgress({ loaded: loadedCount, total: totalCount });
+
       if (i + BATCH_SIZE < uniqueUuids.length) {
         await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
       }
     }
-    
-    // Hide progress bar when done
+
     setStatsLoadingProgress(null);
   };
 
@@ -705,7 +711,6 @@ export default function AdminScreen() {
         updateCellsBatchingPeriod={100}
         initialNumToRender={20}
         removeClippedSubviews={true}
-        contentContainerStyle={statsLoadingProgress ? { paddingBottom: 80 } : undefined}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
@@ -752,6 +757,8 @@ export default function AdminScreen() {
         renderItem={({ item, section }) => {
           if (section.collapsed) return null;
 
+          const statsLoaded = item.stampCount !== undefined;
+
           return (
             <TouchableOpacity
               style={styles.memberRow}
@@ -767,97 +774,76 @@ export default function AdminScreen() {
                 })
               }
             >
-              <View style={{ flex: 1, marginRight: 8 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+              <View style={styles.memberLeft}>
+                <View style={styles.memberNameRow}>
                   <Text style={styles.memberName}>{item.name}</Text>
                   {item.hasMemo && (
                     <Ionicons
                       name="chatbubble-ellipses-outline"
-                      size={16}
+                      size={14}
                       color="#1e88e5"
                       style={styles.memoIcon}
                     />
                   )}
+                  {!statsLoaded && (
+                    <Animated.Text style={[styles.loadingHint, { opacity: loadingOpacity }]}>
+                      로딩중...
+                    </Animated.Text>
+                  )}
                 </View>
-                <View style={{ flexDirection: 'column', marginTop: 4 }}>
-                  {item.stampCount !== undefined ? (
-                    item.stampCount > 0 && (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-                        <Text style={styles.badgeLabel}>스탬프</Text>
-                        <View style={styles.stampBadge}>
-                          <Text style={styles.stampBadgeText}>{item.stampCount}</Text>
-                        </View>
+                <View style={styles.badgeRow}>
+                  {item.tripCount > 0 && (
+                    <View style={styles.badgeItem}>
+                      <Text style={styles.badgeLabel}>승선</Text>
+                      <View style={styles.tripBadge}>
+                        <Text style={styles.tripBadgeText}>{item.tripCount}</Text>
                       </View>
-                    )
-                  ) : (
-                    <View style={styles.loadingBadge}>
-                      <ActivityIndicator size="small" color="#999" />
                     </View>
                   )}
-                  {item.halfCouponCount !== undefined && item.fullCouponCount !== undefined ? (
-                    (item.halfCouponCount > 0 || item.fullCouponCount > 0) && (
-                      <>
-                        {item.halfCouponCount > 0 && (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-                            <Text style={styles.badgeLabel}>쿠폰(50%)</Text>
-                            <View style={styles.couponBadge}>
-                              <Text style={styles.couponBadgeText}>{item.halfCouponCount}</Text>
-                            </View>
-                          </View>
-                        )}
-                        {item.fullCouponCount > 0 && (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-                            <Text style={styles.badgeLabel}>쿠폰</Text>
-                            <View style={styles.couponBadge}>
-                              <Text style={styles.couponBadgeText}>{item.fullCouponCount}</Text>
-                            </View>
-                          </View>
-                        )}
-                      </>
-                    )
-                  ) : (
-                    item.stampCount === undefined && (
-                      <View style={styles.loadingBadge}>
-                        <ActivityIndicator size="small" color="#999" />
+                  {statsLoaded && item.stampCount > 0 && (
+                    <View style={styles.badgeItem}>
+                      <Text style={styles.badgeLabel}>스탬프</Text>
+                      <View style={styles.stampBadge}>
+                        <Text style={styles.stampBadgeText}>{item.stampCount}</Text>
                       </View>
-                    )
+                    </View>
                   )}
-                  {item.tripCount !== undefined ? (
-                    item.tripCount > 0 && (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-                        <Text style={styles.badgeLabel}>승선</Text>
-                        <View style={styles.tripBadge}>
-                          <Text style={styles.tripBadgeText}>{item.tripCount}</Text>
-                        </View>
+                  {statsLoaded && (item.halfCouponCount ?? 0) > 0 && (
+                    <View style={styles.badgeItem}>
+                      <Text style={styles.badgeLabel}>쿠폰(50%)</Text>
+                      <View style={styles.couponBadge}>
+                        <Text style={styles.couponBadgeText}>{item.halfCouponCount}</Text>
                       </View>
-                    )
-                  ) : (
-                    <View style={styles.loadingBadge}>
-                      <ActivityIndicator size="small" color="#999" />
+                    </View>
+                  )}
+                  {statsLoaded && (item.fullCouponCount ?? 0) > 0 && (
+                    <View style={styles.badgeItem}>
+                      <Text style={styles.badgeLabel}>쿠폰</Text>
+                      <View style={styles.couponBadge}>
+                        <Text style={styles.couponBadgeText}>{item.fullCouponCount}</Text>
+                      </View>
                     </View>
                   )}
                 </View>
               </View>
-              <View style={{ alignItems: 'flex-end', minWidth: 100 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <View style={styles.memberRight}>
+                <View style={styles.dobGenderRow}>
                   <Text style={styles.memberDob}>
                     {item.dob?.length === 8 
                       ? `${item.dob.slice(2, 4)}-${item.dob.slice(4, 6)}-${item.dob.slice(6, 8)}` 
                       : item.dob}
                   </Text>
-                  {item.gender === undefined ? (
-                    <View style={styles.loadingBadge}>
-                      <ActivityIndicator size="small" color="#999" />
-                    </View>
-                  ) : item.gender ? (
-                    <View style={styles.genderBadge}>
-                      <Text style={styles.genderBadgeText}>{item.gender}</Text>
-                    </View>
-                  ) : (
-                    <View style={styles.noBoardingBadge}>
-                      <Text style={styles.noBoardingBadgeText}>✕</Text>
-                    </View>
-                  )}
+                  {item.gender !== undefined ? (
+                    item.gender ? (
+                      <View style={styles.genderBadge}>
+                        <Text style={styles.genderBadgeText}>{item.gender}</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.noBoardingBadge}>
+                        <Text style={styles.noBoardingBadgeText}>✕</Text>
+                      </View>
+                    )
+                  ) : null}
                 </View>
                 <Text style={styles.memberCreatedAt}>
                   {toKSTDateStr(item.createdAt).slice(2)}
@@ -871,10 +857,10 @@ export default function AdminScreen() {
                   return (
                     <Text 
                       style={[styles.memberLastLogin, isInactive && styles.memberLastLoginInactive]}
-                      numberOfLines={2}
+                      numberOfLines={1}
                       ellipsizeMode="tail"
                     >
-                      최근 스탬프: {toKSTDateStr(new Date(item.lastStampTime.seconds * 1000).toISOString()).slice(2)}
+                      최근: {toKSTDateStr(new Date(item.lastStampTime.seconds * 1000).toISOString()).slice(2)}
                       {isInactive && ` (${inactivePeriod}개월+)`}
                     </Text>
                   );
@@ -888,17 +874,17 @@ export default function AdminScreen() {
         }
       />
       {statsLoadingProgress && (
-        <View style={styles.progressBarContainer}>
-          <View style={styles.progressBarBackground}>
+        <View style={styles.floatingProgressContainer}>
+          <View style={styles.floatingProgressBarBg}>
             <View 
               style={[
-                styles.progressBarFill,
-                { width: `${(statsLoadingProgress.loaded / statsLoadingProgress.total) * 100}%` }
+                styles.floatingProgressBarFill,
+                { width: `${Math.round((statsLoadingProgress.loaded / statsLoadingProgress.total) * 100)}%` }
               ]} 
             />
           </View>
-          <Text style={styles.progressBarText}>
-            {statsLoadingProgress.loaded}명 로딩 중... ({statsLoadingProgress.total}명 중)
+          <Text style={styles.floatingProgressText}>
+            상세정보 {Math.round((statsLoadingProgress.loaded / statsLoadingProgress.total) * 100)}% 로딩중
           </Text>
         </View>
       )}
@@ -989,20 +975,53 @@ const styles = StyleSheet.create({
   },
   memberRow: {
     backgroundColor: '#fff',
-    paddingLeft: 10,
-    paddingRight: 10,
-    paddingTop: 8,
-    paddingBottom: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
     borderRadius: 12,
-    marginLeft: 1,
-    marginRight: 1,
-    marginBottom: 8,
+    marginHorizontal: 1,
+    marginBottom: 6,
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    minHeight: 60,
     shadowColor: '#000',
     shadowOpacity: 0.03,
     shadowRadius: 4,
     elevation: 2,
+  },
+  memberLeft: {
+    flex: 1,
+    marginRight: 10,
+    justifyContent: 'center',
+  },
+  memberRight: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    minWidth: 95,
+  },
+  memberNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 4,
+    gap: 6,
+  },
+  badgeItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  dobGenderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  loadingHint: {
+    fontSize: 11,
+    fontFamily: 'GiantRegular',
+    color: '#b0c4de',
+    marginLeft: 6,
   },
   memberName: {
     fontSize: 16,
@@ -1010,18 +1029,18 @@ const styles = StyleSheet.create({
     color: '#333',
   },
   memberDob: {
-    fontSize: 16,
+    fontSize: 15,
     fontFamily: 'GiantRegular',
     color: '#333',
   },
   memberCreatedAt: {
-    fontSize: 12,
+    fontSize: 11,
     fontFamily: 'GiantRegular',
     color: '#999',
-    marginTop: 0,
+    marginTop: 2,
   },
   memberLastLogin: {
-    fontSize: 9,
+    fontSize: 10,
     fontFamily: 'GiantRegular',
     color: '#bbb',
     marginTop: 2,
@@ -1104,13 +1123,7 @@ const styles = StyleSheet.create({
     fontFamily: 'GiantRegular',
     color: '#1e88e5',
   },
-  loadingBadge: {
-    width: 20,
-    height: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginStart: 4,
-  },
+  
   genderBadge: {
     backgroundColor: '#E0E0E0',
     paddingHorizontal: 6,
@@ -1152,38 +1165,37 @@ const styles = StyleSheet.create({
       fontSize: 11,
       fontFamily: 'GiantRegular'
     },
-    progressBarContainer: {
+    floatingProgressContainer: {
       position: 'absolute',
-      bottom: 0,
-      left: 0,
-      right: 0,
-      backgroundColor: '#fff',
-      paddingVertical: 12,
-      paddingHorizontal: 20,
-      borderTopWidth: 1,
-      borderTopColor: '#e0e0e0',
-      elevation: 8,
+      bottom: 12,
+      left: 20,
+      right: 20,
+      backgroundColor: 'rgba(255,255,255,0.95)',
+      paddingVertical: 8,
+      paddingHorizontal: 14,
+      borderRadius: 10,
+      elevation: 6,
       shadowColor: '#000',
       shadowOpacity: 0.1,
-      shadowRadius: 4,
+      shadowRadius: 6,
       shadowOffset: { width: 0, height: -2 },
     },
-    progressBarBackground: {
-      height: 6,
-      backgroundColor: '#e0e0e0',
-      borderRadius: 3,
+    floatingProgressBarBg: {
+      height: 4,
+      backgroundColor: '#e8eef5',
+      borderRadius: 2,
       overflow: 'hidden',
-      marginBottom: 8,
+      marginBottom: 4,
     },
-    progressBarFill: {
+    floatingProgressBarFill: {
       height: '100%',
-      backgroundColor: '#1e88e5',
-      borderRadius: 3,
+      backgroundColor: '#90caf9',
+      borderRadius: 2,
     },
-    progressBarText: {
-      fontSize: 12,
+    floatingProgressText: {
+      fontSize: 11,
       fontFamily: 'GiantRegular',
-      color: '#666',
+      color: '#888',
       textAlign: 'center',
     },
     periodSelectorContainer: {

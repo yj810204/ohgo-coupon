@@ -1,7 +1,7 @@
 export default {
   name: '오고피씽',
   slug: 'ohgo-coupon',
-  version: '1.5.2',
+  version: '1.5.3',
   orientation: 'portrait',
   icon: './assets/images/icon.png',
   scheme: 'ohgocoupon',
@@ -11,7 +11,7 @@ export default {
     supportsTablet: true,
     bundleIdentifier: 'ohgo.mobile',
     buildNumber: '10052',
-    googleServicesFile: './ios/GoogleService-Info.plist', // ✅ Firebase 연동을 위한 추가
+    googleServicesFile: './GoogleService-Info.plist',
     infoPlist: {
       NSCameraUsageDescription:
         'QR 스캔을 위해 카메라 접근 권한이 필요합니다.',
@@ -33,7 +33,7 @@ export default {
       backgroundColor: '#000000',
     },
     edgeToEdgeEnabled: true,
-    versionCode: 10051,
+    versionCode: 10052,
     package: 'ohgo.mobile',
     googleServicesFile: './google-services.json', // ✅ Firebase 연동을 위한 추가
     permissions: [
@@ -61,7 +61,20 @@ export default {
       },
     ],
     'expo-secure-store',
-    'expo-notifications', // ✅ 푸시 알림을 위한 필수 플러그인
+    'expo-notifications',
+    '@react-native-community/datetimepicker',
+    'expo-font',
+    'expo-web-browser',
+    [
+      'expo-build-properties',
+      {
+        android: {
+          compileSdkVersion: 36,
+          targetSdkVersion: 36,
+          minSdkVersion: 24,
+        },
+      },
+    ],
   ],
   experiments: {
     typedRoutes: true,

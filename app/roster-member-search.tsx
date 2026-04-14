@@ -30,7 +30,7 @@ import { db } from '../firebase';
 import { Asset } from 'expo-asset';
 import Modal from 'react-native-modal';
 import { WebView } from 'react-native-webview';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { v5 as uuidv5 } from 'uuid';
 
 // Define interface for user data

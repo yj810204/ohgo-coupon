@@ -4,11 +4,9 @@ import { useFonts } from 'expo-font';
 import * as Notifications from 'expo-notifications';
 import { router, Stack } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import { canGoBack } from 'expo-router/build/global-state/routing';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { Alert, Linking, Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context'; // 설치 필요
 import { doc, getDoc } from 'firebase/firestore';
@@ -215,20 +213,18 @@ export default function TabLayout() {
                   <CustomHeader
                     title={getTitle(route?.name)}
                     routeName={route.name}
-                    isAdmin={isAdmin} // ✅ isAdmin 전달
+                    isAdmin={isAdmin}
                   />
                 ),
               })}
             >
               <Stack.Screen name="index" />
-
               <Stack.Screen name="+not-found" />
               <Stack.Screen name="admin-push" />
               <Stack.Screen name="admin" />
               <Stack.Screen name="admin-main" />
               <Stack.Screen name="boarding-form" />
               <Stack.Screen name="coupons" />
-
               <Stack.Screen name="login" />
               <Stack.Screen name="logs" />
               <Stack.Screen name="member-detail" />
@@ -238,8 +234,7 @@ export default function TabLayout() {
               <Stack.Screen name="settings" />
               <Stack.Screen name="stamp-history" />
               <Stack.Screen name="stamp" />
-
-              <Stack.Screen name="mini-games" />
+              <Stack.Screen name="mini-games/index" />
               <Stack.Screen name="mini-games/fishing" />
               <Stack.Screen name="mini-games/block" />
               <Stack.Screen name="mini-games/ranking" />
@@ -305,7 +300,7 @@ export default function TabLayout() {
       <View style={styles.header}>
         {/* 왼쪽 뒤로가기 버튼 */}
         <View style={styles.sideBtn}>
-          {canGoBack() ? (
+          {router.canGoBack() ? (
             <TouchableOpacity onPress={() => navigation.goBack()}>
               <Ionicons name="chevron-back" size={26} color="#fff" />
             </TouchableOpacity>

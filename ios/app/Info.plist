@@ -19,7 +19,7 @@
     <key>CFBundlePackageType</key>
     <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.5.2</string>
+    <string>1.5.3</string>
     <key>CFBundleSignature</key>
     <string>????</string>
     <key>CFBundleURLTypes</key>
@@ -29,12 +29,6 @@
         <array>
           <string>ohgocoupon</string>
           <string>ohgo.mobile</string>
-        </array>
-      </dict>
-      <dict>
-        <key>CFBundleURLSchemes</key>
-        <array>
-          <string>exp+ohgo-coupon</string>
         </array>
       </dict>
     </array>
@@ -53,23 +47,28 @@
     </dict>
     <key>NSCameraUsageDescription</key>
     <string>QR 스캔을 위해 카메라 접근 권한이 필요합니다.</string>
-
-    <!-- ✅ 위치 권한 추가 -->
-    <key>NSLocationWhenInUseUsageDescription</key>
-    <string>QR 스캔을 위해 위치 권한이 필요합니다.</string>
-    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-    <string>QR 스캔 기능을 원활하게 사용하려면 위치 권한이 필요합니다.</string>
-
     <key>NSFaceIDUsageDescription</key>
     <string>Allow $(PRODUCT_NAME) to access your Face ID biometric data.</string>
+    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+    <string>스탬프 적립을 위한 QR 스캔 기능을 원활히 사용하려면 위치 접근 권한이 필요합니다.</string>
+    <key>NSLocationAlwaysUsageDescription</key>
+    <string>Allow $(PRODUCT_NAME) to access your location</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>스탬프 적립을 위한 QR 스캔을 위해 사용자의 위치 정보 접근 권한이 필요합니다.</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>Allow $(PRODUCT_NAME) to access your microphone</string>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>명부 이미지를 갤러리에 저장하기 위해 사진 라이브러리 접근 권한이 필요합니다.</string>
     <key>NSPhotoLibraryUsageDescription</key>
-    <string>물고기 도감에 이미지를 추가하기 위해 사진 라이브러리 접근 권한이 필요합니다.</string>
+    <string>명부 이미지를 갤러리에 저장하기 위해 사진 라이브러리 접근 권한이 필요합니다.</string>
     <key>NSUserActivityTypes</key>
     <array>
       <string>$(PRODUCT_BUNDLE_IDENTIFIER).expo.index_route</string>
     </array>
+    <key>NSUserTrackingUsageDescription</key>
+    <string>사용자 맞춤형 광고를 제공하기 위해 추적 권한이 필요합니다.</string>
+    <key>RCTNewArchEnabled</key>
+    <true/>
     <key>UILaunchStoryboardName</key>
     <string>SplashScreen</string>
     <key>UIRequiredDeviceCapabilities</key>

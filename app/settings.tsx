@@ -73,7 +73,11 @@ export default function SettingsScreen() {
       await SecureStore.deleteItemAsync('notificationHistory');
 
       console.log('✅ 로그아웃 완료: 사용자 정보 및 알림 내역 제거');
-      await Updates.reloadAsync();
+      if (!__DEV__) {
+        await Updates.reloadAsync();
+      } else {
+        router.replace('/login');
+      }
     } catch (e) {
       console.error('🚨 로그아웃 오류:', e);
     }

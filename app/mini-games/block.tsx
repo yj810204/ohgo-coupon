@@ -1395,6 +1395,9 @@ export default function BlockGame() {
       return;
     }
 
+    // 게임 재시작 시 baitUsed 상태를 리셋하여 미끼가 차감될 수 있도록 함
+    setBaitUsed(false);
+
     // 서버에서 현재 미끼 사용량 가져와서 검증
     try {
       const usageSnap = await getDoc(doc(db, `users/${paramsRef.current.uuid}/baitUsage`, todayStr()));

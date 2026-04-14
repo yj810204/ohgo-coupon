@@ -18,7 +18,7 @@ import { getDoc, setDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { getUser } from '../utils/secure-store';
 import { WebView } from 'react-native-webview';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import Modal from 'react-native-modal';
 
 export default function BoardingForm() {
