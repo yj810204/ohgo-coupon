@@ -308,6 +308,35 @@ CI/CD 환경이나 다른 개발자 머신에서 이 특정 Java 경로가 존�
 - Gradle 7.x: Java 8-19
 - Gradle 6.x: Java 8-15
 
+### 4.2 EAS 로컬 Android 빌드 (`eas build -p android --local`)
+
+`[RUN_GRADLEW]` 단계에서 아래와 같이 실패할 때는 **코드 문제가 아니라 로컬에 JDK가 없거나**, 터미널/`gradlew`가 **JAVA_HOME을 찾지 못한 경우**가 많습니다.
+
+```
+The operation couldn't be completed. Unable to locate a Java Runtime.
+```
+
+**조치 (macOS + Homebrew 예시):**
+
+1. JDK 17 설치 (React Native / AGP 8.x와 호환):
+   ```bash
+   brew install openjdk@17
+   ```
+2. 셸 설정(`~/.zshrc` 등)에 추가 후 터미널 재시작:
+   ```bash
+   export PATH="/opt/homebrew/opt/openjdk@17/bin:$PATH"
+   export JAVA_HOME="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
+   ```
+   (Intel Mac이면 `/usr/local/opt/openjdk@17` 경로를 사용합니다.)
+3. 확인:
+   ```bash
+   java -version
+   /usr/libexec/java_home -v 17
+   ```
+   JDK만 설치된 경우 `export JAVA_HOME=$(/usr/libexec/java_home -v 17)` 한 줄로 잡을 수 있습니다.
+
+**대안:** Mac에 JDK를 설치하지 않으려면 `--local` 없이 **EAS 클라우드 빌드**만 사용합니다 (`eas build -p android --profile production`). 클라우드 쪽에서 Gradle을 실행합니다.
+
 ## 5. 향후 개선사항
 
 ### 물고기 관리 개선
